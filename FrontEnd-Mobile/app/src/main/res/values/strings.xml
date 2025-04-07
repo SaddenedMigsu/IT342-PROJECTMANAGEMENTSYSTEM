@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Project Management System</string>
+    <string name="welcome_back">Welcome Back!</string>
+    <string name="get_started">Now, let\'s get you started.</string>
+    <string name="sign_up_faculty">Sign up as Faculty</string>
+    <string name="sign_up_student">Sign up as Student</string>
+    <string name="already_have_account">Already have an account?</string>
+    <string name="login">Login</string>
+</resources>
