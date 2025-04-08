@@ -1,0 +1,169 @@
+/* Full-screen responsive layout */
+.login-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100vh;
+  width: 100vw;
+  background: linear-gradient(135deg, #8b0000, #daa520);
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI", sans-serif;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  min-height: 100%;
+  /* Force centering by removing any default layout behavior */
+  flex-direction: column;
+  z-index: 9999;
+}
+
+/* Add this to make sure the body and html also have no margins */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  background: transparent;
+}
+
+/* Remove dark overlay */
+.background-layer {
+  display: none;
+}
+
+/* Modal login card */
+.login-modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 2.5rem 3rem;
+  border-radius: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 450px;
+  text-align: center;
+  transition: all 0.3s ease-in-out;
+}
+
+/* CIT-U Logo */
+.modal-logo {
+  width: 100px;
+  margin-bottom: 1rem;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+/* Heading */
+.modal-title {
+  font-size: 2rem;
+  color: #8b0000;
+  margin-bottom: 1rem;
+  text-shadow: 1px 1px 2px rgba(139, 0, 0, 0.3);
+}
+
+/* Input styling */
+.input-field {
+  width: 100%;
+  padding: 10px 14px;
+  margin-bottom: 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 30px;
+  font-size: 0.95rem;
+  transition: 0.2s ease-in-out;
+  box-sizing: border-box;
+  background-color: #f8f8f8;
+}
+
+.input-field:focus {
+  border-color: #8b0000;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(139, 0, 0, 0.3);
+}
+
+/* Login Button */
+.login-button {
+  width: 100%;
+  background-color: #daa520;
+  color: white;
+  padding: 12px;
+  border-radius: 30px;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  font-size: 1rem;
+  margin-top: 0.5rem;
+}
+
+.login-button:hover {
+  background-color: #b8860b;
+}
+
+/* Signup */
+.signup-text {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.signup-link {
+  color: #8b0000;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.signup-link:hover {
+  text-decoration: underline;
+}
+
+/* Media Queries - Responsive Layout */
+@media (min-width: 1440px) {
+  .login-modal {
+    max-width: 500px;
+    padding: 2.5rem 3.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-modal {
+    padding: 2rem;
+    border-radius: 1rem;
+    max-width: 90%;
+  }
+
+  .modal-title {
+    font-size: 1.5rem;
+  }
+
+  .input-field,
+  .login-button {
+    font-size: 0.95rem;
+    padding: 10px 14px;
+  }
+
+  .modal-logo {
+    width: 120px;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-title {
+    font-size: 1.3rem;
+  }
+
+  .signup-text {
+    font-size: 0.85rem;
+  }
+}
