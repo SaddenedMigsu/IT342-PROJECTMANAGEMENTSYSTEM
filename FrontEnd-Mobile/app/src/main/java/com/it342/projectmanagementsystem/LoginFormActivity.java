@@ -142,6 +142,13 @@ public class LoginFormActivity extends AppCompatActivity {
                 if (response.isSuccessful() && response.body() != null) {
                     AuthResponse authResponse = response.body();
                     Log.d(TAG, "Backend sync successful!");
+                    Log.d(TAG, "Response details:");
+                    Log.d(TAG, "Token: " + authResponse.getToken());
+                    Log.d(TAG, "UserId: " + authResponse.getUserId());
+                    Log.d(TAG, "Email: " + authResponse.getEmail());
+                    Log.d(TAG, "FirstName: " + authResponse.getFirstName());
+                    Log.d(TAG, "LastName: " + authResponse.getLastName());
+                    Log.d(TAG, "Role: " + authResponse.getRole());
 
                     // Save auth token and user info
                     SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
