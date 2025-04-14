@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -1020,6 +1021,134 @@ public class AppointmentController {
             logger.info("Sent faculty appointment request notification to: {} for appointment: {}", facultyId, appointmentId);
         } catch (Exception e) {
             logger.error("Error sending faculty appointment request notification: {}", e.getMessage());
+        }
+    }
+
+    // Helper method to check if user is admin
+    private boolean isAdmin(Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (!userDocs.isEmpty()) {
+                var userDoc = userDocs.iterator().next();
+                return "ADMIN".equals(userDoc.getString("role"));
+            }
+            return false;
+        } catch (Exception e) {
+            logger.error("Error checking admin status: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // Get top 3 most booked faculty (Admin only)
+    @GetMapping("/faculty/most-booked")
+    public ResponseEntity<List<Map<String, Object>>> getTopBookedFaculty(Authentication authentication) {
+        try {
+            // Check if user is admin
+            if (!isAdmin(authentication)) {
+                logger.error("Unauthorized access attempt to most booked faculty by user: {}", authentication.getName());
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            logger.info("Admin {} fetching top 3 most booked faculty members", authentication.getName());
+
+            // Get all appointments
+            var appointments = firestore.collection("appointments")
+                    .whereEqualTo("status", "SCHEDULED")  // Only count confirmed appointments
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            // Count appointments per faculty
+            Map<String, Integer> facultyBookings = new HashMap<>();
+            Map<String, String> facultyNames = new HashMap<>();
+
+            for (var appointment : appointments) {
+                List<String> participants = (List<String>) appointment.get("participants");
+                if (participants != null) {
+                    for (String participantId : participants) {
+                        // Check if participant is faculty
+                        var userDoc = firestore.collection("users")
+                                .document(participantId)
+                                .get()
+                                .get();
+                        
+                        if (userDoc.exists() && "FACULTY".equals(userDoc.getString("role"))) {
+                            // Count the booking
+                            facultyBookings.merge(participantId, 1, Integer::sum);
+                            
+                            // Store faculty name if not already stored
+                            if (!facultyNames.containsKey(participantId)) {
+                                String firstName = userDoc.getString("firstName");
+                                String lastName = userDoc.getString("lastName");
+                                facultyNames.put(participantId, firstName + " " + lastName);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sort faculty by booking count and get top 3
+            List<Map<String, Object>> topFaculty = facultyBookings.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(3)
+                    .map(entry -> {
+                        Map<String, Object> facultyData = new HashMap<>();
+                        facultyData.put("userId", entry.getKey());
+                        facultyData.put("name", facultyNames.get(entry.getKey()));
+                        facultyData.put("bookingCount", entry.getValue());
+                        return facultyData;
+                    })
+                    .collect(Collectors.toList());
+
+            logger.info("Successfully retrieved top 3 most booked faculty members");
+            return ResponseEntity.ok(topFaculty);
+        } catch (Exception e) {
+            logger.error("Error fetching top booked faculty: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // Get all users (Admin only)
+    @GetMapping("/users/all")
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers(Authentication authentication) {
+        try {
+            // Check if user is admin
+            if (!isAdmin(authentication)) {
+                logger.error("Unauthorized access attempt to get all users by user: {}", authentication.getName());
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            logger.info("Admin {} fetching all users", authentication.getName());
+
+            // Get all users
+            var userDocs = firestore.collection("users")
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            List<Map<String, Object>> users = new ArrayList<>();
+            for (var userDoc : userDocs) {
+                Map<String, Object> userData = new HashMap<>();
+                userData.put("userId", userDoc.getId());
+                userData.put("firstName", userDoc.getString("firstName"));
+                userData.put("lastName", userDoc.getString("lastName"));
+                userData.put("email", userDoc.getString("email"));
+                userData.put("role", userDoc.getString("role"));
+                userData.put("createdAt", userDoc.getTimestamp("createdAt"));
+                users.add(userData);
+            }
+
+            logger.info("Successfully retrieved {} users", users.size());
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            logger.error("Error fetching all users: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
         }
     }
 } 
