@@ -1113,42 +1113,4 @@ public class AppointmentController {
             return ResponseEntity.internalServerError().build();
         }
     }
-
-    // Get all users (Admin only)
-    @GetMapping("/users/all")
-    public ResponseEntity<List<Map<String, Object>>> getAllUsers(Authentication authentication) {
-        try {
-            // Check if user is admin
-            if (!isAdmin(authentication)) {
-                logger.error("Unauthorized access attempt to get all users by user: {}", authentication.getName());
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-
-            logger.info("Admin {} fetching all users", authentication.getName());
-
-            // Get all users
-            var userDocs = firestore.collection("users")
-                    .get()
-                    .get()
-                    .getDocuments();
-
-            List<Map<String, Object>> users = new ArrayList<>();
-            for (var userDoc : userDocs) {
-                Map<String, Object> userData = new HashMap<>();
-                userData.put("userId", userDoc.getId());
-                userData.put("firstName", userDoc.getString("firstName"));
-                userData.put("lastName", userDoc.getString("lastName"));
-                userData.put("email", userDoc.getString("email"));
-                userData.put("role", userDoc.getString("role"));
-                userData.put("createdAt", userDoc.getTimestamp("createdAt"));
-                users.add(userData);
-            }
-
-            logger.info("Successfully retrieved {} users", users.size());
-            return ResponseEntity.ok(users);
-        } catch (Exception e) {
-            logger.error("Error fetching all users: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
-    }
 } 
