@@ -4,7 +4,7 @@ public class RegisterResponse {
     private String userId;
     private String email;
     private String role;
-
+//Testing
     public RegisterResponse() {
     }
 
