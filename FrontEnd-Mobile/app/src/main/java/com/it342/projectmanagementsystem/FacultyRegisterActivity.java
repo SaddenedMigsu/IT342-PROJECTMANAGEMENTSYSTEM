@@ -2,22 +2,37 @@ package com.it342.projectmanagementsystem;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.firebase.auth.FirebaseAuth;
+import com.it342.projectmanagementsystem.api.ApiService;
+import com.it342.projectmanagementsystem.api.RetrofitClient;
+import com.it342.projectmanagementsystem.models.RegisterRequest;
+import com.it342.projectmanagementsystem.models.RegisterResponse;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class FacultyRegisterActivity extends AppCompatActivity {
 
+    private static final String TAG = "FacultyRegisterActivity";
     private EditText etFacultyId, etFirstName, etLastName, etEmail, etPassword, etConfirmPassword;
     private Button btnSignUp;
     private TextView tvLogin;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_faculty_register);
+
+        // Initialize Firebase Auth
+        mAuth = FirebaseAuth.getInstance();
 
         // Initialize views
         etFacultyId = findViewById(R.id.etFacultyId);
@@ -105,12 +120,62 @@ public class FacultyRegisterActivity extends AppCompatActivity {
     }
 
     private void registerFaculty() {
-        // Here you would typically send the registration data to your server or database
-        
-        // Navigate to login form with success message
-        Intent intent = new Intent(FacultyRegisterActivity.this, LoginFormActivity.class);
-        intent.putExtra("REGISTRATION_SUCCESS", "Account is Successfully created!");
-        startActivity(intent);
-        finish();
+        String email = etEmail.getText().toString().trim();
+        String password = etPassword.getText().toString().trim();
+        String facultyId = etFacultyId.getText().toString().trim();
+        String firstName = etFirstName.getText().toString().trim();
+        String lastName = etLastName.getText().toString().trim();
+
+        // First create the user in Firebase Authentication
+        mAuth.createUserWithEmailAndPassword(email, password)
+                .addOnCompleteListener(this, task -> {
+                    if (task.isSuccessful()) {
+                        // Registration success
+                        Log.d(TAG, "createUserWithEmail:success");
+                        
+                        // Now register in your backend
+                        RegisterRequest registerRequest = new RegisterRequest(
+                            facultyId, email, password, firstName, lastName
+                        );
+                        
+                        ApiService apiService = RetrofitClient.getInstance().getApiService();
+                        Call<RegisterResponse> call = apiService.register(registerRequest);
+                        
+                        call.enqueue(new Callback<RegisterResponse>() {
+                            @Override
+                            public void onResponse(Call<RegisterResponse> call, Response<RegisterResponse> response) {
+                                if (response.isSuccessful()) {
+                                    // Both Firebase and backend registration successful
+                                    Intent intent = new Intent(FacultyRegisterActivity.this, LoginFormActivity.class);
+                                    intent.putExtra("REGISTRATION_SUCCESS", "Account successfully created! Please login.");
+                                    startActivity(intent);
+                                    finish();
+                                } else {
+                                    // Backend registration failed
+                                    Toast.makeText(FacultyRegisterActivity.this, 
+                                        "Registration completed but backend sync failed. Please try logging in.", 
+                                        Toast.LENGTH_LONG).show();
+                                    startActivity(new Intent(FacultyRegisterActivity.this, LoginFormActivity.class));
+                                    finish();
+                                }
+                            }
+
+                            @Override
+                            public void onFailure(Call<RegisterResponse> call, Throwable t) {
+                                // Network error during backend registration
+                                Toast.makeText(FacultyRegisterActivity.this, 
+                                    "Registration completed but backend sync failed. Please try logging in.", 
+                                    Toast.LENGTH_LONG).show();
+                                startActivity(new Intent(FacultyRegisterActivity.this, LoginFormActivity.class));
+                                finish();
+                            }
+                        });
+                    } else {
+                        // If registration fails, display a message to the user.
+                        Log.w(TAG, "createUserWithEmail:failure", task.getException());
+                        Toast.makeText(FacultyRegisterActivity.this, "Registration failed: " + 
+                            task.getException().getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                });
     }
 } 

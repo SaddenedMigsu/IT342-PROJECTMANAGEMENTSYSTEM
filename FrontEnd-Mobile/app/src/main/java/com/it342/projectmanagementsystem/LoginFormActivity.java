@@ -98,6 +98,8 @@ public class LoginFormActivity extends AppCompatActivity {
         // Show loading indicator
         progressBar.setVisibility(View.VISIBLE);
 
+        Log.d(TAG, "Attempting to sign in with email: " + email);
+        
         // Attempt Firebase Authentication
         mAuth.signInWithEmailAndPassword(email, password)
                 .addOnCompleteListener(this, task -> {
@@ -111,9 +113,19 @@ public class LoginFormActivity extends AppCompatActivity {
                     } else {
                         // If sign in fails, display a message to the user.
                         progressBar.setVisibility(View.GONE);
-                        Log.w(TAG, "signInWithEmail:failure", task.getException());
-                        Toast.makeText(LoginFormActivity.this, "Authentication failed.",
-                                Toast.LENGTH_SHORT).show();
+                        Exception exception = task.getException();
+                        Log.e(TAG, "signInWithEmail:failure", exception);
+                        
+                        String errorMessage = "Authentication failed.";
+                        if (exception != null) {
+                            errorMessage += " Error: " + exception.getMessage();
+                            if (exception.getCause() != null) {
+                                errorMessage += "\nCause: " + exception.getCause().getMessage();
+                            }
+                        }
+                        
+                        Toast.makeText(LoginFormActivity.this, errorMessage,
+                                Toast.LENGTH_LONG).show();
                     }
                 });
     }
@@ -138,6 +150,8 @@ public class LoginFormActivity extends AppCompatActivity {
                     editor.putString("userId", authResponse.getUserId());
                     editor.putString("studId", authResponse.getStudId());
                     editor.putString("email", authResponse.getEmail());
+                    editor.putString("firstName", authResponse.getFirstName());
+                    editor.putString("lastName", authResponse.getLastName());
                     editor.apply();
 
                     // Navigate to HomePage with clear task flag
