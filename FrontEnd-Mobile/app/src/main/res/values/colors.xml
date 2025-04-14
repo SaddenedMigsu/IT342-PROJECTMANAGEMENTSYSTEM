@@ -12,4 +12,5 @@
     <color name="background">#FFFFFF</color>
     <color name="text_dark">#212121</color>
     <color name="text_light">#757575</color>
+    <color name="maroon">#800000</color>
 </resources>

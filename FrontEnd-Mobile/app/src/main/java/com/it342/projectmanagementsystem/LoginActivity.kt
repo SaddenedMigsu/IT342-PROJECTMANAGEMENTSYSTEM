@@ -1,4 +1,4 @@
-package com.cebu.projectmanagementsystem
+package com.it342.projectmanagementsystem
 
 import android.content.Intent
 import android.os.Bundle
