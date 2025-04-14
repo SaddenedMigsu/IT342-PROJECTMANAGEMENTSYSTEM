@@ -1,26 +1,35 @@
 package com.it342.projectmanagementsystem.controller;
 
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.firebase.auth.FirebaseAuthException;
 
 import com.it342.projectmanagementsystem.model.*;
 import com.it342.projectmanagementsystem.service.*;
 
 import org.apache.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 @RestController
-@RequestMapping("/auth1")
+@RequestMapping("/api/users")
 public class UserController {
 
+    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
     private final UserService userService;
+    private final Firestore firestore;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, Firestore firestore) {
         this.userService = userService;
+        this.firestore = firestore;
     }
 
     // Register User
@@ -132,5 +141,38 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
     public ResponseEntity<?> deleteUser(@PathVariable String id) throws FirebaseAuthException {
         userService.deleteUser(id);
         return ResponseEntity.ok("User deleted successfully");
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers() {
+        try {
+            logger.info("Fetching all users");
+            var users = new ArrayList<Map<String, Object>>();
+            
+            var userDocs = firestore.collection("users")
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            for (QueryDocumentSnapshot doc : userDocs) {
+                Map<String, Object> userData = new HashMap<>();
+                userData.put("userId", doc.getId());
+                userData.put("studId", doc.getString("studId"));
+                userData.put("firstName", doc.getString("firstName"));
+                userData.put("lastName", doc.getString("lastName"));
+                userData.put("email", doc.getString("email"));
+                userData.put("course", doc.getString("course"));
+                userData.put("role", doc.getString("role"));
+                userData.put("createdAt", doc.getTimestamp("createdAt"));
+                // Excluding password for security
+                users.add(userData);
+            }
+
+            logger.info("Successfully retrieved {} users", users.size());
+            return ResponseEntity.ok(users);
+        } catch (InterruptedException | ExecutionException e) {
+            logger.error("Error fetching users: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }
