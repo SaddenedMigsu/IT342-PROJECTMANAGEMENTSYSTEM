@@ -1,4 +1,4 @@
-package com.cebu.projectmanagementsystem
+package com.it342.projectmanagementsystem
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -10,4 +10,4 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         // Simple home screen, no additional setup needed
     }
-}
+} 

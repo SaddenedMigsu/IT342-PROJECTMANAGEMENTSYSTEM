@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "630477829943",
+    "project_id": "project-management-syste-b9ab2",
+    "storage_bucket": "project-management-syste-b9ab2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:630477829943:android:dc9b22d89416d5756a0cb2",
+        "android_client_info": {
+          "package_name": "com.it342.projectmanagementsystem"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVTbxpH979uY_RdRMOEzfLP-fwBC-ALhQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
