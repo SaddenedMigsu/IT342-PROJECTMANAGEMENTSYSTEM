@@ -1,26 +1,36 @@
 package com.it342.projectmanagementsystem.controller;
 
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.firebase.auth.FirebaseAuthException;
 
 import com.it342.projectmanagementsystem.model.*;
 import com.it342.projectmanagementsystem.service.*;
 
 import org.apache.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 @RestController
-@RequestMapping("/auth1")
+@RequestMapping("/api/users")
 public class UserController {
 
+    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
     private final UserService userService;
+    private final Firestore firestore;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, Firestore firestore) {
         this.userService = userService;
+        this.firestore = firestore;
     }
 
     // Register User
@@ -132,5 +142,64 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
     public ResponseEntity<?> deleteUser(@PathVariable String id) throws FirebaseAuthException {
         userService.deleteUser(id);
         return ResponseEntity.ok("User deleted successfully");
+    }
+
+    // Helper method to check if user is admin
+    private boolean isAdmin(Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (!userDocs.isEmpty()) {
+                var userDoc = userDocs.iterator().next();
+                return "ADMIN".equals(userDoc.getString("role"));
+            }
+            return false;
+        } catch (Exception e) {
+            logger.error("Error checking admin status: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // Get all users (Admin only)
+    @GetMapping("/all")
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers(Authentication authentication) {
+        try {
+            // Check if user is admin
+            if (!isAdmin(authentication)) {
+                logger.error("Unauthorized access attempt to get all users by user: {}", authentication.getName());
+                return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+            }
+
+            logger.info("Admin {} fetching all users", authentication.getName());
+
+            // Get all users
+            var userDocs = firestore.collection("users")
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            List<Map<String, Object>> users = new ArrayList<>();
+            for (var userDoc : userDocs) {
+                Map<String, Object> userData = new HashMap<>();
+                userData.put("userId", userDoc.getId());
+                userData.put("firstName", userDoc.getString("firstName"));
+                userData.put("lastName", userDoc.getString("lastName"));
+                userData.put("email", userDoc.getString("email"));
+                userData.put("role", userDoc.getString("role"));
+                userData.put("createdAt", userDoc.getTimestamp("createdAt"));
+                users.add(userData);
+            }
+
+            logger.info("Successfully retrieved {} users", users.size());
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            logger.error("Error fetching all users: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }
