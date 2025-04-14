@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -143,35 +144,61 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
         return ResponseEntity.ok("User deleted successfully");
     }
 
-    @GetMapping
-    public ResponseEntity<List<Map<String, Object>>> getAllUsers() {
+    // Helper method to check if user is admin
+    private boolean isAdmin(Authentication authentication) {
         try {
-            logger.info("Fetching all users");
-            var users = new ArrayList<Map<String, Object>>();
+            String userEmail = authentication.getName();
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
             
+            if (!userDocs.isEmpty()) {
+                var userDoc = userDocs.iterator().next();
+                return "ADMIN".equals(userDoc.getString("role"));
+            }
+            return false;
+        } catch (Exception e) {
+            logger.error("Error checking admin status: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // Get all users (Admin only)
+    @GetMapping("/all")
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers(Authentication authentication) {
+        try {
+            // Check if user is admin
+            if (!isAdmin(authentication)) {
+                logger.error("Unauthorized access attempt to get all users by user: {}", authentication.getName());
+                return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+            }
+
+            logger.info("Admin {} fetching all users", authentication.getName());
+
+            // Get all users
             var userDocs = firestore.collection("users")
                     .get()
                     .get()
                     .getDocuments();
 
-            for (QueryDocumentSnapshot doc : userDocs) {
+            List<Map<String, Object>> users = new ArrayList<>();
+            for (var userDoc : userDocs) {
                 Map<String, Object> userData = new HashMap<>();
-                userData.put("userId", doc.getId());
-                userData.put("studId", doc.getString("studId"));
-                userData.put("firstName", doc.getString("firstName"));
-                userData.put("lastName", doc.getString("lastName"));
-                userData.put("email", doc.getString("email"));
-                userData.put("course", doc.getString("course"));
-                userData.put("role", doc.getString("role"));
-                userData.put("createdAt", doc.getTimestamp("createdAt"));
-                // Excluding password for security
+                userData.put("userId", userDoc.getId());
+                userData.put("firstName", userDoc.getString("firstName"));
+                userData.put("lastName", userDoc.getString("lastName"));
+                userData.put("email", userDoc.getString("email"));
+                userData.put("role", userDoc.getString("role"));
+                userData.put("createdAt", userDoc.getTimestamp("createdAt"));
                 users.add(userData);
             }
 
             logger.info("Successfully retrieved {} users", users.size());
             return ResponseEntity.ok(users);
-        } catch (InterruptedException | ExecutionException e) {
-            logger.error("Error fetching users: {}", e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error fetching all users: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }

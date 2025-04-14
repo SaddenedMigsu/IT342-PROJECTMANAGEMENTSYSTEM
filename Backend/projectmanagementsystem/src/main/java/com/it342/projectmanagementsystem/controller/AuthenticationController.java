@@ -125,8 +125,14 @@ public class AuthenticationController {
             logger.info("Course: {}", user.getCourse());
             logger.info("Token generated successfully");
 
-            return ResponseEntity.ok(new AuthResponse(token, user.getUserId(), 
-                    user.getEmail(), user.getRole()));
+            return ResponseEntity.ok(new AuthResponse(
+                token,
+                user.getUserId(),
+                user.getEmail(),
+                user.getRole(),
+                user.getFirstName(),
+                user.getLastName()
+            ));
         } catch (Exception e) {
             logger.error("Login failed for identifier: {}. Error: {}", request.getIdentifier(), e.getMessage());
             return ResponseEntity.badRequest().build();
