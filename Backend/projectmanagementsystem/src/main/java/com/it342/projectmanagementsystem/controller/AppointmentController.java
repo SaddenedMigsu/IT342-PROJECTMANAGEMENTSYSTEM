@@ -3,8 +3,12 @@ package com.it342.projectmanagementsystem.controller;
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.DocumentSnapshot;
 import com.it342.projectmanagementsystem.dto.*;
 import com.it342.projectmanagementsystem.model.Appointment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -17,25 +21,61 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 @RestController
 @RequestMapping("/api/appointments")
-@CrossOrigin(origins = "*")
 public class AppointmentController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AppointmentController.class);
     private final Firestore firestore;
 
     public AppointmentController(Firestore firestore) {
         this.firestore = firestore;
     }
 
+    // Helper method to create user-appointment relationships
+    private void createUserAppointmentRelationships(String appointmentId, String creatorId, List<String> participantIds) {
+        try {
+            // Create relationship for creator
+            Map<String, Object> creatorRelationship = new HashMap<>();
+            creatorRelationship.put("userId", creatorId);
+            creatorRelationship.put("appointmentId", appointmentId);
+            creatorRelationship.put("role", "CREATOR");
+            creatorRelationship.put("status", "CONFIRMED");
+            creatorRelationship.put("createdAt", Timestamp.now());
+            creatorRelationship.put("updatedAt", Timestamp.now());
+            
+            firestore.collection("user_appointments").document().set(creatorRelationship).get();
+            
+            // Create relationships for participants
+            for (String participantId : participantIds) {
+                Map<String, Object> participantRelationship = new HashMap<>();
+                participantRelationship.put("userId", participantId);
+                participantRelationship.put("appointmentId", appointmentId);
+                participantRelationship.put("role", "PARTICIPANT");
+                participantRelationship.put("status", "PENDING");
+                participantRelationship.put("createdAt", Timestamp.now());
+                participantRelationship.put("updatedAt", Timestamp.now());
+                
+                firestore.collection("user_appointments").document().set(participantRelationship).get();
+            }
+            
+            logger.info("Created user-appointment relationships for appointment: {}", appointmentId);
+        } catch (Exception e) {
+            logger.error("Error creating user-appointment relationships: {}", e.getMessage());
+        }
+    }
+
     // 1. Create and Edit Appointment
-    @PostMapping
+    @PostMapping("/create")
     public ResponseEntity<Appointment> createAppointment(
             @RequestBody AppointmentRequest request,
             Authentication authentication) {
         try {
             String userId = authentication.getName();
+            logger.info("Creating appointment request from user: {}", userId);
 
             // Validate time format
             Instant startTime = Instant.parse(request.getStartTime());
@@ -51,13 +91,23 @@ public class AppointmentController {
                     endTime.getEpochSecond(), endTime.getNano()));
             appointmentData.put("createdBy", userId);
             appointmentData.put("participants", request.getParticipants());
-            appointmentData.put("status", "SCHEDULED");
+            appointmentData.put("status", "PENDING_APPROVAL");
             appointmentData.put("createdAt", Timestamp.now());
             appointmentData.put("updatedAt", Timestamp.now());
+            
+            // Add faculty approval tracking
+            appointmentData.put("facultyApprovals", new HashMap<String, Boolean>());
+            appointmentData.put("requiresApproval", true);
 
             // Save to Firestore
             var docRef = firestore.collection("appointments").document();
             docRef.set(appointmentData).get();
+            
+            // Create user-appointment relationships
+            createUserAppointmentRelationships(docRef.getId(), userId, request.getParticipants());
+            
+            // Send approval requests to faculty participants
+            sendApprovalRequests(docRef.getId(), request.getParticipants(), userId);
 
             // Create response
             Appointment appointment = new Appointment();
@@ -70,12 +120,181 @@ public class AppointmentController {
                     endTime.getEpochSecond(), endTime.getNano()));
             appointment.setCreatedBy(userId);
             appointment.setParticipants(request.getParticipants());
-            appointment.setStatus("SCHEDULED");
+            appointment.setStatus("PENDING_APPROVAL");
 
+            logger.info("Appointment request created with ID: {}", docRef.getId());
             return ResponseEntity.ok(appointment);
         } catch (DateTimeParseException e) {
+            logger.error("Invalid date format in appointment request: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
+            logger.error("Error creating appointment: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    // Helper method to send approval requests to faculty
+    private void sendApprovalRequests(String appointmentId, List<String> participantIds, String requesterId) {
+        try {
+            // Get appointment details
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found when sending approval requests: {}", appointmentId);
+                return;
+            }
+            
+            // Get appointment details for the notification
+            String title = appointmentDoc.getString("title");
+            String description = appointmentDoc.getString("description");
+            Timestamp startTime = appointmentDoc.getTimestamp("startTime");
+            Timestamp endTime = appointmentDoc.getTimestamp("endTime");
+            
+            // Get requester details
+            var requesterDoc = firestore.collection("users").document(requesterId).get().get();
+            String requesterName = requesterDoc.getString("firstName") + " " + requesterDoc.getString("lastName");
+            
+            // Create notification for each faculty participant
+            for (String participantId : participantIds) {
+                // Check if participant is faculty
+                var userDoc = firestore.collection("users").document(participantId).get().get();
+                if (userDoc.exists() && "FACULTY".equals(userDoc.getString("role"))) {
+                    // Create notification
+                    Map<String, Object> notificationData = new HashMap<>();
+                    notificationData.put("userId", participantId);
+                    notificationData.put("appointmentId", appointmentId);
+                    notificationData.put("type", "APPOINTMENT_REQUEST");
+                    notificationData.put("title", "Appointment Request: " + title);
+                    notificationData.put("message", requesterName + " has requested an appointment with you.");
+                    notificationData.put("details", Map.of(
+                        "title", title,
+                        "description", description,
+                        "startTime", startTime,
+                        "endTime", endTime,
+                        "requesterId", requesterId,
+                        "requesterName", requesterName
+                    ));
+                    notificationData.put("status", "UNREAD");
+                    notificationData.put("createdAt", Timestamp.now());
+                    
+                    // Save notification
+                    firestore.collection("notifications").document().set(notificationData).get();
+                    
+                    logger.info("Sent approval request to faculty: {} for appointment: {}", participantId, appointmentId);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error sending approval requests: {}", e.getMessage());
+        }
+    }
+    
+    // Endpoint for faculty to respond to appointment requests
+    @PostMapping("/{appointmentId}/approve")
+    public ResponseEntity<Appointment> approveAppointment(
+            @PathVariable String appointmentId,
+            @RequestBody Map<String, Boolean> approval,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            boolean isApproved = approval.getOrDefault("approved", false);
+            logger.info("Faculty with email {} {} appointment: {}", userEmail, isApproved ? "approved" : "denied", appointmentId);
+            
+            // Check if appointment exists
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found: {}", appointmentId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+            
+            // Check if user is faculty
+            if (!"FACULTY".equals(userDoc.getString("role"))) {
+                logger.error("User {} is not faculty and cannot approve appointments", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            // Check if user is a participant
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            if (participants == null || !participants.contains(userId)) {
+                logger.error("User {} is not a participant in appointment {}", userEmail, appointmentId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            // Update faculty approval status
+            Map<String, Object> facultyApprovals = (Map<String, Object>) appointmentDoc.get("facultyApprovals");
+            if (facultyApprovals == null) {
+                facultyApprovals = new HashMap<>();
+            }
+            facultyApprovals.put(userId, isApproved);
+            
+            // Check if all faculty have approved
+            boolean allApproved = true;
+            for (String participantId : participants) {
+                var participantDoc = firestore.collection("users").document(participantId).get().get();
+                if (participantDoc.exists() && "FACULTY".equals(participantDoc.getString("role"))) {
+                    Boolean participantApproval = (Boolean) facultyApprovals.get(participantId);
+                    if (participantApproval == null || !participantApproval) {
+                        allApproved = false;
+                        break;
+                    }
+                }
+            }
+            
+            // Update appointment status
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("facultyApprovals", facultyApprovals);
+            updates.put("updatedAt", Timestamp.now());
+            
+            if (allApproved) {
+                updates.put("status", "SCHEDULED");
+                logger.info("All faculty approved appointment: {}", appointmentId);
+            }
+            
+            // Update in Firestore
+            firestore.collection("appointments").document(appointmentId).update(updates).get();
+            
+            // Create notification for requester
+            String requesterId = appointmentDoc.getString("createdBy");
+            Map<String, Object> notificationData = new HashMap<>();
+            notificationData.put("userId", requesterId);
+            notificationData.put("appointmentId", appointmentId);
+            notificationData.put("type", "APPOINTMENT_RESPONSE");
+            notificationData.put("title", "Appointment " + (isApproved ? "Approved" : "Denied"));
+            notificationData.put("message", userDoc.getString("firstName") + " " + userDoc.getString("lastName") + 
+                    " has " + (isApproved ? "approved" : "denied") + " your appointment request.");
+            notificationData.put("status", "UNREAD");
+            notificationData.put("createdAt", Timestamp.now());
+            
+            // Save notification
+            firestore.collection("notifications").document().set(notificationData).get();
+            
+            // Create response
+            Appointment appointment = new Appointment();
+            appointment.setAppointmentId(appointmentId);
+            appointment.setTitle(appointmentDoc.getString("title"));
+            appointment.setDescription(appointmentDoc.getString("description"));
+            appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
+            appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
+            appointment.setCreatedBy(requesterId);
+            appointment.setParticipants(participants);
+            appointment.setStatus(allApproved ? "SCHEDULED" : "PENDING_APPROVAL");
+            
+            return ResponseEntity.ok(appointment);
+        } catch (Exception e) {
+            logger.error("Error processing appointment approval: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -86,11 +305,28 @@ public class AppointmentController {
             @RequestBody AppointmentRequest request,
             Authentication authentication) {
         try {
-            String userId = authentication.getName();
+            String userEmail = authentication.getName();
+            logger.info("Updating appointment: {} by user: {}", appointmentId, userEmail);
+
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
 
             // Check if appointment exists and user has permission
             var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
             if (!appointmentDoc.exists() || !userId.equals(appointmentDoc.getString("createdBy"))) {
+                logger.error("Appointment not found or user does not have permission");
                 return ResponseEntity.notFound().build();
             }
 
@@ -125,36 +361,87 @@ public class AppointmentController {
             appointment.setParticipants(request.getParticipants());
             appointment.setStatus(appointmentDoc.getString("status"));
 
+            logger.info("Successfully updated appointment: {}", appointmentId);
             return ResponseEntity.ok(appointment);
         } catch (DateTimeParseException e) {
+            logger.error("Invalid date format in update request: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
+            logger.error("Error updating appointment: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
 
-    // 2. Manage Participants
+    // Helper method to check if user has permission to modify participants
+    private boolean hasPermissionToModifyParticipants(DocumentSnapshot userDoc, DocumentSnapshot appointmentDoc) {
+        String userId = userDoc.getId();
+        String userRole = userDoc.getString("role");
+        String creatorId = appointmentDoc.getString("createdBy");
+        
+        // Allow if user is the creator or is a faculty member
+        return userId.equals(creatorId) || "FACULTY".equals(userRole);
+    }
+
     @PostMapping("/{appointmentId}/participants")
-    public ResponseEntity<Appointment> updateParticipants(
+    public ResponseEntity<Appointment> addParticipants(
             @PathVariable String appointmentId,
             @RequestBody ParticipantRequest request,
             Authentication authentication) {
         try {
-            String userId = authentication.getName();
+            String userEmail = authentication.getName();
+            logger.info("Adding participants to appointment: {}", appointmentId);
 
-            // Check if appointment exists and user has permission
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+
+            // Check if appointment exists
             var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
-            if (!appointmentDoc.exists() || !userId.equals(appointmentDoc.getString("createdBy"))) {
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found: {}", appointmentId);
                 return ResponseEntity.notFound().build();
+            }
+            
+            // Check if user has permission
+            if (!hasPermissionToModifyParticipants(userDoc, appointmentDoc)) {
+                logger.error("User {} does not have permission to modify appointment {}", userEmail, appointmentId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            String userId = userDoc.getId();
+            
+            // Get current participants
+            List<String> currentParticipants = (List<String>) appointmentDoc.get("participants");
+            if (currentParticipants == null) {
+                currentParticipants = new ArrayList<>();
+            }
+
+            // Add new participants
+            for (String participantId : request.getParticipantIds()) {
+                if (!currentParticipants.contains(participantId)) {
+                    currentParticipants.add(participantId);
+                }
             }
 
             // Update participants
             Map<String, Object> updates = new HashMap<>();
-            updates.put("participants", request.getParticipantIds());
+            updates.put("participants", currentParticipants);
             updates.put("updatedAt", Timestamp.now());
 
             // Update in Firestore
             firestore.collection("appointments").document(appointmentId).update(updates).get();
+            logger.info("Successfully added {} participants to appointment {}", 
+                    request.getParticipantIds().size(), appointmentId);
 
             // Create response
             Appointment appointment = new Appointment();
@@ -163,25 +450,154 @@ public class AppointmentController {
             appointment.setDescription(appointmentDoc.getString("description"));
             appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
             appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
-            appointment.setCreatedBy(userId);
-            appointment.setParticipants(request.getParticipantIds());
+            appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+            appointment.setParticipants(currentParticipants);
             appointment.setStatus(appointmentDoc.getString("status"));
 
             return ResponseEntity.ok(appointment);
         } catch (Exception e) {
+            logger.error("Error adding participants to appointment {}: {}", appointmentId, e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
 
     @DeleteMapping("/{appointmentId}/participants/{participantId}")
-    public ResponseEntity<?> removeParticipant(@PathVariable String appointmentId, @PathVariable String participantId) {
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Appointment> removeParticipant(
+            @PathVariable String appointmentId,
+            @PathVariable String participantId,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Removing participant {} from appointment: {}", participantId, appointmentId);
+
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+
+            // Check if appointment exists
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found: {}", appointmentId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Check if user has permission
+            if (!hasPermissionToModifyParticipants(userDoc, appointmentDoc)) {
+                logger.error("User {} does not have permission to modify appointment {}", userEmail, appointmentId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            String userId = userDoc.getId();
+
+            // Get current participants
+            List<String> currentParticipants = (List<String>) appointmentDoc.get("participants");
+            if (currentParticipants == null) {
+                currentParticipants = new ArrayList<>();
+            }
+
+            // Remove participant
+            currentParticipants.remove(participantId);
+
+            // Update participants
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("participants", currentParticipants);
+            updates.put("updatedAt", Timestamp.now());
+
+            // Update in Firestore
+            firestore.collection("appointments").document(appointmentId).update(updates).get();
+            logger.info("Successfully removed participant {} from appointment {}", participantId, appointmentId);
+
+            // Create response
+            Appointment appointment = new Appointment();
+            appointment.setAppointmentId(appointmentId);
+            appointment.setTitle(appointmentDoc.getString("title"));
+            appointment.setDescription(appointmentDoc.getString("description"));
+            appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
+            appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
+            appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+            appointment.setParticipants(currentParticipants);
+            appointment.setStatus(appointmentDoc.getString("status"));
+
+            return ResponseEntity.ok(appointment);
+        } catch (Exception e) {
+            logger.error("Error removing participant from appointment {}: {}", appointmentId, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
-    @PutMapping("/{appointmentId}/participants/{participantId}")
-    public ResponseEntity<?> updateParticipant(@PathVariable String appointmentId, @PathVariable String participantId, 
-                                             @RequestBody ParticipantRequest request) {
-        return ResponseEntity.ok().build();
+    @PutMapping("/{appointmentId}/participants")
+    public ResponseEntity<Appointment> updateParticipants(
+            @PathVariable String appointmentId,
+            @RequestBody ParticipantRequest request,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Updating participants for appointment: {}", appointmentId);
+
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+
+            // Check if appointment exists
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found: {}", appointmentId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Check if user has permission
+            if (!hasPermissionToModifyParticipants(userDoc, appointmentDoc)) {
+                logger.error("User {} does not have permission to modify appointment {}", userEmail, appointmentId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            String userId = userDoc.getId();
+
+            // Update participants
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("participants", request.getParticipantIds());
+            updates.put("updatedAt", Timestamp.now());
+
+            // Update in Firestore
+            firestore.collection("appointments").document(appointmentId).update(updates).get();
+            logger.info("Successfully updated participants for appointment {}", appointmentId);
+
+            // Create response
+            Appointment appointment = new Appointment();
+            appointment.setAppointmentId(appointmentId);
+            appointment.setTitle(appointmentDoc.getString("title"));
+            appointment.setDescription(appointmentDoc.getString("description"));
+            appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
+            appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
+            appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+            appointment.setParticipants(request.getParticipantIds());
+            appointment.setStatus(appointmentDoc.getString("status"));
+
+            return ResponseEntity.ok(appointment);
+        } catch (Exception e) {
+            logger.error("Error updating participants for appointment {}: {}", appointmentId, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     // 3. Dashboard
@@ -206,33 +622,74 @@ public class AppointmentController {
     @GetMapping
     public ResponseEntity<List<Appointment>> getAppointments(Authentication authentication) {
         try {
-            String userId = authentication.getName();
+            String userEmail = authentication.getName();
+            logger.info("Getting appointments for user with email: {}", userEmail);
 
-            // Get appointments where user is creator or participant
-            var appointments = new ArrayList<Appointment>();
-            var appointmentDocs = firestore.collection("appointments")
-                    .whereArrayContains("participants", userId)
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+            String userRole = userDoc.getString("role");
+
+            // Get user's appointment relationships
+            var userAppointments = firestore.collection("user_appointments")
+                    .whereEqualTo("userId", userId)
                     .get()
                     .get()
                     .getDocuments();
 
-            for (QueryDocumentSnapshot doc : appointmentDocs) {
-                Appointment appointment = new Appointment();
-                appointment.setAppointmentId(doc.getId());
-                appointment.setTitle(doc.getString("title"));
-                appointment.setDescription(doc.getString("description"));
-                appointment.setStartTime(doc.getTimestamp("startTime"));
-                appointment.setEndTime(doc.getTimestamp("endTime"));
-                appointment.setCreatedBy(doc.getString("createdBy"));
-                appointment.setParticipants((List<String>) doc.get("participants"));
-                appointment.setStatus(doc.getString("status"));
-                appointment.setCreatedAt(doc.getTimestamp("createdAt"));
-                appointment.setUpdatedAt(doc.getTimestamp("updatedAt"));
-                appointments.add(appointment);
+            List<Appointment> appointments = new ArrayList<>();
+            for (var userAppointment : userAppointments) {
+                String appointmentId = userAppointment.getString("appointmentId");
+                var appointmentDoc = firestore.collection("appointments")
+                        .document(appointmentId)
+                        .get()
+                        .get();
+
+                if (appointmentDoc.exists()) {
+                    Appointment appointment = new Appointment();
+                    appointment.setAppointmentId(appointmentId);
+                    appointment.setTitle(appointmentDoc.getString("title"));
+                    appointment.setDescription(appointmentDoc.getString("description"));
+                    appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
+                    appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
+                    appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+                    appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
+                    appointment.setStatus(appointmentDoc.getString("status"));
+                    appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
+                    appointment.setUpdatedAt(appointmentDoc.getTimestamp("updatedAt"));
+                    
+                    // Add user-specific appointment data
+                    appointment.setUserRole(userAppointment.getString("role"));
+                    appointment.setUserStatus(userAppointment.getString("status"));
+
+                    // For faculty, add approval status if applicable
+                    if ("FACULTY".equals(userRole)) {
+                        Map<String, Object> facultyApprovals = (Map<String, Object>) appointmentDoc.get("facultyApprovals");
+                        if (facultyApprovals != null) {
+                            Boolean hasApproved = (Boolean) facultyApprovals.get(userId);
+                            appointment.setHasApproved(hasApproved != null ? hasApproved : false);
+                        }
+                    }
+                    
+                    appointments.add(appointment);
+                }
             }
 
+            logger.info("Successfully retrieved {} appointments for user {}", appointments.size(), userEmail);
             return ResponseEntity.ok(appointments);
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (Exception e) {
+            logger.error("Error fetching appointments: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -286,20 +743,283 @@ public class AppointmentController {
             @PathVariable String appointmentId,
             Authentication authentication) {
         try {
-            String userId = authentication.getName();
+            String userEmail = authentication.getName();
+            logger.info("Attempting to delete appointment: {} by user: {}", appointmentId, userEmail);
 
-            // Check if appointment exists and user has permission
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+
+            // Check if appointment exists
             var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
-            if (!appointmentDoc.exists() || !userId.equals(appointmentDoc.getString("createdBy"))) {
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found: {}", appointmentId);
                 return ResponseEntity.notFound().build();
             }
 
-            // Delete from Firestore
-            firestore.collection("appointments").document(appointmentId).delete().get();
+            // Check if user is the creator
+            if (!userId.equals(appointmentDoc.getString("createdBy"))) {
+                logger.error("User {} is not the creator of appointment {}", userEmail, appointmentId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
 
+            // Delete appointment
+            firestore.collection("appointments").document(appointmentId).delete().get();
+            
+            // Delete all user-appointment relationships for this appointment
+            var userAppointments = firestore.collection("user_appointments")
+                    .whereEqualTo("appointmentId", appointmentId)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            for (var userAppointment : userAppointments) {
+                userAppointment.getReference().delete().get();
+            }
+
+            // Delete any notifications related to this appointment
+            var notifications = firestore.collection("notifications")
+                    .whereEqualTo("appointmentId", appointmentId)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            for (var notification : notifications) {
+                notification.getReference().delete().get();
+            }
+
+            logger.info("Successfully deleted appointment: {} and all related data", appointmentId);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
+            logger.error("Error deleting appointment: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // New endpoint to get user's appointments
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<Appointment>> getUserAppointments(
+            @PathVariable String userId,
+            Authentication authentication) {
+        try {
+            String requestingUserEmail = authentication.getName();
+            
+            // Get the requesting user's document by email
+            var requestingUserDocs = firestore.collection("users")
+                    .whereEqualTo("email", requestingUserEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            if (requestingUserDocs.isEmpty()) {
+                logger.error("Requesting user with email {} not found", requestingUserEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            var requestingUserDoc = requestingUserDocs.iterator().next();
+            String requestingUserId = requestingUserDoc.getId();
+
+            // Check if the requesting user has permission to view these appointments
+            if (!requestingUserId.equals(userId)) {
+                // TODO: Add role-based permission check here if needed
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Get user's appointment relationships
+            var userAppointments = firestore.collection("user_appointments")
+                    .whereEqualTo("userId", userId)
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            List<Appointment> appointments = new ArrayList<>();
+            for (var userAppointment : userAppointments) {
+                String appointmentId = userAppointment.getString("appointmentId");
+                var appointmentDoc = firestore.collection("appointments")
+                        .document(appointmentId)
+                        .get()
+                        .get();
+
+                if (appointmentDoc.exists()) {
+                    Appointment appointment = new Appointment();
+                    appointment.setAppointmentId(appointmentId);
+                    appointment.setTitle(appointmentDoc.getString("title"));
+                    appointment.setDescription(appointmentDoc.getString("description"));
+                    appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
+                    appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
+                    appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+                    appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
+                    appointment.setStatus(appointmentDoc.getString("status"));
+                    
+                    // Add user-specific appointment data
+                    appointment.setUserRole(userAppointment.getString("role"));
+                    appointment.setUserStatus(userAppointment.getString("status"));
+                    
+                    appointments.add(appointment);
+                }
+            }
+
+            logger.info("Successfully retrieved {} appointments for user {}", appointments.size(), userId);
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            logger.error("Error fetching user appointments: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // Endpoint for students to request appointments with faculty
+    @PostMapping("/request-faculty")
+    public ResponseEntity<Appointment> requestFacultyAppointment(
+            @RequestBody FacultyAppointmentRequest request,
+            Authentication authentication) {
+        try {
+            String studentEmail = authentication.getName();
+            logger.info("Student {} requesting appointment with faculty: {}", studentEmail, request.getUserId());
+
+            // Verify the student's role using email
+            var studentDocs = firestore.collection("users")
+                    .whereEqualTo("email", studentEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            if (studentDocs.isEmpty()) {
+                logger.error("User with email {} not found", studentEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            var studentDoc = studentDocs.iterator().next();
+            String studentId = studentDoc.getId();
+
+            if (!"STUDENT".equals(studentDoc.getString("role"))) {
+                logger.error("User {} is not a student and cannot request faculty appointments", studentEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Verify the faculty exists
+            DocumentSnapshot facultyDoc = firestore.collection("users").document(request.getUserId()).get().get();
+            if (!facultyDoc.exists() || !"FACULTY".equals(facultyDoc.getString("role"))) {
+                logger.error("Faculty {} does not exist or is not a faculty member", request.getUserId());
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Validate time format and convert to Philippine timezone
+            ZoneId philippineZone = ZoneId.of("Asia/Manila");
+            DateTimeFormatter formatter = DateTimeFormatter.ISO_DATE_TIME.withZone(philippineZone);
+            
+            Instant startTime = Instant.parse(request.getStartTime());
+            Instant endTime = Instant.parse(request.getEndTime());
+            
+            // Convert to Philippine time
+            ZonedDateTime phStartTime = startTime.atZone(philippineZone);
+            ZonedDateTime phEndTime = endTime.atZone(philippineZone);
+
+            // Create appointment data
+            Map<String, Object> appointmentData = new HashMap<>();
+            appointmentData.put("title", request.getTitle());
+            appointmentData.put("description", request.getDescription());
+            appointmentData.put("startTime", Timestamp.ofTimeSecondsAndNanos(
+                    startTime.getEpochSecond(), startTime.getNano()));
+            appointmentData.put("endTime", Timestamp.ofTimeSecondsAndNanos(
+                    endTime.getEpochSecond(), endTime.getNano()));
+            appointmentData.put("timezone", "Asia/Manila");
+            appointmentData.put("createdBy", studentId);
+            appointmentData.put("participants", List.of(studentId, request.getUserId()));
+            appointmentData.put("status", "PENDING_APPROVAL");
+            appointmentData.put("createdAt", Timestamp.now());
+            appointmentData.put("updatedAt", Timestamp.now());
+            
+            // Add faculty approval tracking
+            Map<String, Boolean> facultyApprovals = new HashMap<>();
+            facultyApprovals.put(request.getUserId(), false);
+            appointmentData.put("facultyApprovals", facultyApprovals);
+            appointmentData.put("requiresApproval", true);
+            appointmentData.put("appointmentType", "FACULTY_REQUEST");
+
+            // Save to Firestore
+            var docRef = firestore.collection("appointments").document();
+            docRef.set(appointmentData).get();
+            
+            // Create user-appointment relationships
+            createUserAppointmentRelationships(docRef.getId(), studentId, List.of(request.getUserId()));
+            
+            // Send notification to faculty
+            sendFacultyAppointmentRequest(docRef.getId(), request.getUserId(), studentId, request);
+
+            // Create response
+            Appointment appointment = new Appointment();
+            appointment.setAppointmentId(docRef.getId());
+            appointment.setTitle(request.getTitle());
+            appointment.setDescription(request.getDescription());
+            appointment.setStartTime(Timestamp.ofTimeSecondsAndNanos(
+                    startTime.getEpochSecond(), startTime.getNano()));
+            appointment.setEndTime(Timestamp.ofTimeSecondsAndNanos(
+                    endTime.getEpochSecond(), endTime.getNano()));
+            appointment.setCreatedBy(studentId);
+            appointment.setParticipants(List.of(studentId, request.getUserId()));
+            appointment.setStatus("PENDING_APPROVAL");
+
+            logger.info("Faculty appointment request created with ID: {} for time: {} to {}", 
+                docRef.getId(), 
+                phStartTime.format(formatter),
+                phEndTime.format(formatter));
+            return ResponseEntity.ok(appointment);
+        } catch (DateTimeParseException e) {
+            logger.error("Invalid date format in faculty appointment request: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            logger.error("Error creating faculty appointment request: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    // Helper method to send faculty appointment request notification
+    private void sendFacultyAppointmentRequest(String appointmentId, String facultyId, String studentId, FacultyAppointmentRequest request) {
+        try {
+            // Get student details
+            var studentDoc = firestore.collection("users").document(studentId).get().get();
+            String studentName = studentDoc.getString("firstName") + " " + studentDoc.getString("lastName");
+            
+            // Create notification for faculty
+            Map<String, Object> notificationData = new HashMap<>();
+            notificationData.put("userId", facultyId);
+            notificationData.put("appointmentId", appointmentId);
+            notificationData.put("type", "FACULTY_APPOINTMENT_REQUEST");
+            notificationData.put("title", "Appointment Request from Student");
+            notificationData.put("message", studentName + " has requested an appointment with you.");
+            notificationData.put("details", Map.of(
+                "title", request.getTitle(),
+                "description", request.getDescription(),
+                "startTime", Timestamp.ofTimeSecondsAndNanos(
+                    Instant.parse(request.getStartTime()).getEpochSecond(),
+                    Instant.parse(request.getStartTime()).getNano()),
+                "endTime", Timestamp.ofTimeSecondsAndNanos(
+                    Instant.parse(request.getEndTime()).getEpochSecond(),
+                    Instant.parse(request.getEndTime()).getNano()),
+                "studentId", studentId,
+                "studentName", studentName,
+                "reason", request.getReason()
+            ));
+            notificationData.put("status", "UNREAD");
+            notificationData.put("createdAt", Timestamp.now());
+            
+            // Save notification
+            firestore.collection("notifications").document().set(notificationData).get();
+            
+            logger.info("Sent faculty appointment request notification to: {} for appointment: {}", facultyId, appointmentId);
+        } catch (Exception e) {
+            logger.error("Error sending faculty appointment request notification: {}", e.getMessage());
         }
     }
 } 

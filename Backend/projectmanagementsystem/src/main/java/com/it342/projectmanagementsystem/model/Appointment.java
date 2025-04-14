@@ -16,6 +16,11 @@ public class Appointment {
     private String status;
     private Timestamp createdAt;
     private Timestamp updatedAt;
+    
+    // User-specific appointment data
+    private String userRole;    // CREATOR or PARTICIPANT
+    private String userStatus;  // PENDING, CONFIRMED, etc.
+    private Boolean hasApproved; // For faculty members to track their approval status
 
     public Appointment() {
     }
@@ -118,5 +123,29 @@ public class Appointment {
     @PropertyName("updatedAt")
     public void setUpdatedAt(Timestamp updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getUserRole() {
+        return userRole;
+    }
+
+    public void setUserRole(String userRole) {
+        this.userRole = userRole;
+    }
+
+    public String getUserStatus() {
+        return userStatus;
+    }
+
+    public void setUserStatus(String userStatus) {
+        this.userStatus = userStatus;
+    }
+
+    public Boolean getHasApproved() {
+        return hasApproved;
+    }
+
+    public void setHasApproved(Boolean hasApproved) {
+        this.hasApproved = hasApproved;
     }
 } 
