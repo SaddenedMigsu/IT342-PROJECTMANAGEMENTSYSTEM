@@ -6,6 +6,7 @@ import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.it342.projectmanagementsystem.dto.*;
 import com.it342.projectmanagementsystem.model.Appointment;
+import com.it342.projectmanagementsystem.service.AppointmentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -31,9 +32,11 @@ public class AppointmentController {
 
     private static final Logger logger = LoggerFactory.getLogger(AppointmentController.class);
     private final Firestore firestore;
+    private final AppointmentService appointmentService;
 
-    public AppointmentController(Firestore firestore) {
+    public AppointmentController(Firestore firestore, AppointmentService appointmentService) {
         this.firestore = firestore;
+        this.appointmentService = appointmentService;
     }
 
     // Helper method to create user-appointment relationships
@@ -1110,6 +1113,25 @@ public class AppointmentController {
             return ResponseEntity.ok(topFaculty);
         } catch (Exception e) {
             logger.error("Error fetching top booked faculty: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getAppointmentStats(Authentication authentication) {
+        try {
+            String adminEmail = authentication.getName();
+            logger.info("Admin {} requesting appointment statistics", adminEmail);
+
+            Map<String, Object> stats = appointmentService.getAppointmentStats(adminEmail);
+            
+            logger.info("Successfully retrieved appointment statistics");
+            return ResponseEntity.ok(stats);
+        } catch (SecurityException e) {
+            logger.error("Unauthorized access attempt: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            logger.error("Error fetching appointment statistics: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }

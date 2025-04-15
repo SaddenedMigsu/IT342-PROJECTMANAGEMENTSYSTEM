@@ -156,9 +156,39 @@ public class UserService {
         firestore.collection("users").document(userId).update(updates);
     }
 
-    //  Delete User
-    public void deleteUser(String userId) throws FirebaseAuthException {
-        FirebaseAuth.getInstance().deleteUser(userId);
-        firestore.collection("users").document(userId).delete();
+    //  Delete User (Admin only)
+    public void deleteUserAsAdmin(String userId, String adminEmail) throws Exception {
+        // Check if user exists in Firestore
+        DocumentSnapshot userDoc = firestore.collection("users").document(userId).get().get();
+        if (!userDoc.exists()) {
+            throw new IllegalArgumentException("User not found in Firestore: " + userId);
+        }
+
+        // Check if admin exists and has admin role
+        var adminDocs = firestore.collection("users")
+                .whereEqualTo("email", adminEmail)
+                .get()
+                .get()
+                .getDocuments();
+        
+        if (adminDocs.isEmpty()) {
+            throw new SecurityException("Admin user not found");
+        }
+
+        var adminDoc = adminDocs.iterator().next();
+        if (!"ADMIN".equals(adminDoc.getString("role"))) {
+            throw new SecurityException("User does not have admin privileges");
+        }
+
+        try {
+            // First try to delete from Firebase Auth
+            firebaseAuth.deleteUser(userId);
+        } catch (FirebaseAuthException e) {
+            // If user doesn't exist in Firebase Auth, log it but continue with Firestore deletion
+            System.out.println("User not found in Firebase Auth, continuing with Firestore deletion: " + e.getMessage());
+        }
+
+        // Then delete from Firestore
+        firestore.collection("users").document(userId).delete().get();
     }
 }
