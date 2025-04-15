@@ -1,7 +1,10 @@
 package com.it342.projectmanagementsystem.api;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
 import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
@@ -14,39 +17,38 @@ import java.net.Proxy;
 public class RetrofitClient {
     private static final String TAG = "RetrofitClient";
     // In Android emulator, 10.0.2.2 is the special IP that maps to the host machine's localhost
-    private static final String BASE_URL = "http://10.0.2.2:8080";
+    private static final String BASE_URL = "http://10.0.2.2:8080/";  // Backend server port
     private static RetrofitClient instance;
+    private static Context context;
+    private static Retrofit retrofit;
     private final ApiService apiService;
 
-    private RetrofitClient() {
-        HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> {
-            Log.d(TAG, "OkHttp: " + message);
-        });
+    private RetrofitClient(Context context) {
+        RetrofitClient.context = context;
+        
+        HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> 
+            Log.d("RetrofitClient", message));
         loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
 
         OkHttpClient client = new OkHttpClient.Builder()
-            .addInterceptor(loggingInterceptor)
             .addInterceptor(chain -> {
-                okhttp3.Request original = chain.request();
+                SharedPreferences prefs = context.getSharedPreferences("AuthPrefs", Context.MODE_PRIVATE);
+                String token = prefs.getString("token", "");
+                Request original = chain.request();
                 
-                // Add headers for CORS and content type
-                okhttp3.Request request = original.newBuilder()
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .header("Origin", "http://10.0.2.2:8080")
-                    .method(original.method(), original.body())
-                    .build();
-
-                Log.d(TAG, "Sending request to: " + request.url());
-                return chain.proceed(request);
+                Request.Builder requestBuilder = original.newBuilder()
+                        .header("Authorization", "Bearer " + token)
+                        .method(original.method(), original.body());
+                
+                return chain.proceed(requestBuilder.build());
             })
-            .connectTimeout(30, TimeUnit.SECONDS)  // Increased timeout
-            .readTimeout(30, TimeUnit.SECONDS)     // Increased timeout
-            .writeTimeout(30, TimeUnit.SECONDS)    // Increased timeout
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(60, TimeUnit.SECONDS)  // Increased timeout to 60 seconds
+            .readTimeout(60, TimeUnit.SECONDS)     // Increased timeout to 60 seconds
+            .writeTimeout(60, TimeUnit.SECONDS)    // Increased timeout to 60 seconds
             .retryOnConnectionFailure(true)
-            .proxy(Proxy.NO_PROXY)  // Try without proxy
             .connectionSpecs(Arrays.asList(
-                ConnectionSpec.CLEARTEXT,  // Try cleartext first
+                ConnectionSpec.CLEARTEXT,
                 ConnectionSpec.MODERN_TLS,
                 ConnectionSpec.COMPATIBLE_TLS
             ))
@@ -54,7 +56,7 @@ public class RetrofitClient {
 
         try {
             Log.d(TAG, "Creating Retrofit instance with BASE_URL: " + BASE_URL);
-            Retrofit retrofit = new Retrofit.Builder()
+            retrofit = new Retrofit.Builder()
                 .baseUrl(BASE_URL)
                 .client(client)
                 .addConverterFactory(GsonConverterFactory.create())
@@ -70,17 +72,36 @@ public class RetrofitClient {
 
     public static synchronized RetrofitClient getInstance() {
         if (instance == null) {
-            try {
-                instance = new RetrofitClient();
-            } catch (Exception e) {
-                Log.e(TAG, "Error creating RetrofitClient instance: " + e.getMessage(), e);
-                throw e;
-            }
+            throw new IllegalStateException("RetrofitClient must be initialized with context first");
         }
         return instance;
     }
 
+    public static synchronized void init(Context context) {
+        if (instance == null) {
+            instance = new RetrofitClient(context.getApplicationContext());
+        }
+    }
+
     public ApiService getApiService() {
         return apiService;
+    }
+
+    public static Retrofit getClient() {
+        if (retrofit == null) {
+            HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+            interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+
+            OkHttpClient client = new OkHttpClient.Builder()
+                    .addInterceptor(interceptor)
+                    .build();
+
+            retrofit = new Retrofit.Builder()
+                    .baseUrl(BASE_URL)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .client(client)
+                    .build();
+        }
+        return retrofit;
     }
 } 

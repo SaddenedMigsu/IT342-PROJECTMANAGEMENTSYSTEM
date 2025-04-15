@@ -1,4 +1,4 @@
-package com.it342.projectmanagementsystem;
+package com.it342.projectmanagementsystem.activities;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -12,6 +12,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.it342.projectmanagementsystem.R;
 import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.models.AuthResponse;

@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
-        android:name=".ProjectManagementApp"
+        android:name=".PMSApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -28,19 +28,19 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".LoginFormActivity"
+            android:name=".activities.LoginFormActivity"
             android:exported="false" />
         <activity
-            android:name=".HomePage"
+            android:name=".activities.HomePage"
             android:exported="false" />
         <activity
-            android:name=".FacultyRegisterActivity"
-            android:exported="false" />
-        <activity
-            android:name=".StudentRegisterActivity"
+            android:name=".activities.RegisterActivity"
             android:exported="false" />
         <activity
             android:name=".MainActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.BookAppointmentActivity"
             android:exported="false" />
         <!-- <activity android:name=".FacultyDashboardActivity" /> -->
         <!-- <activity android:name=".StudentDashboardActivity" /> -->

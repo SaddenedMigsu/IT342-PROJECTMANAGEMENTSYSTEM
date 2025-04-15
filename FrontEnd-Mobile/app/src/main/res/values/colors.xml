@@ -13,4 +13,5 @@
     <color name="text_dark">#212121</color>
     <color name="text_light">#757575</color>
     <color name="maroon">#800000</color>
+    <color name="gray">#757575</color>
 </resources>
