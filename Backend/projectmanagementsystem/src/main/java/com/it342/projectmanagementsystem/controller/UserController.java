@@ -202,4 +202,36 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @GetMapping("/faculties")
+    public ResponseEntity<List<Map<String, Object>>> getAllFaculties() {
+        try {
+            logger.info("Fetching all faculty members");
+
+            // Query users collection for faculty members
+            var facultyDocs = firestore.collection("users")
+                    .whereEqualTo("role", "FACULTY")
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            List<Map<String, Object>> faculties = new ArrayList<>();
+            for (var facultyDoc : facultyDocs) {
+                Map<String, Object> facultyData = new HashMap<>();
+                facultyData.put("userId", facultyDoc.getId());
+                facultyData.put("firstName", facultyDoc.getString("firstName"));
+                facultyData.put("lastName", facultyDoc.getString("lastName"));
+                facultyData.put("email", facultyDoc.getString("email"));
+                facultyData.put("course", facultyDoc.getString("course"));
+                facultyData.put("createdAt", facultyDoc.getTimestamp("createdAt"));
+                faculties.add(facultyData);
+            }
+
+            logger.info("Successfully retrieved {} faculty members", faculties.size());
+            return ResponseEntity.ok(faculties);
+        } catch (Exception e) {
+            logger.error("Error fetching faculty members: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 }
