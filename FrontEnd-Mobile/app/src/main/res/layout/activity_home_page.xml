@@ -25,10 +25,12 @@
         <ImageView
             android:id="@+id/logoImage"
             android:layout_width="0dp"
-            android:layout_height="40dp"
+            android:layout_height="200dp"
             android:layout_weight="1"
             android:src="@drawable/pms_logo"
             android:layout_gravity="center"
+            android:scaleType="fitCenter"
+            android:adjustViewBounds="true"
             android:contentDescription="PMS Logo"/>
 
         <ImageButton
@@ -41,19 +43,21 @@
     </LinearLayout>
 
     <!-- Welcome Text -->
+
+    <!-- Book a Meeting Text -->
+
     <TextView
         android:id="@+id/welcomeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginStart="92dp"
+        android:layout_marginTop="8dp"
         android:text="Welcome, Miguel!"
         android:textSize="24sp"
         android:textStyle="bold"
-        android:layout_marginTop="24dp"
-        android:layout_marginStart="16dp"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
-        app:layout_constraintStart_toStartOf="parent"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- Book a Meeting Text -->
     <TextView
         android:id="@+id/bookMeetingText"
         android:layout_width="wrap_content"
@@ -76,58 +80,12 @@
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
+            android:id="@+id/appointmentsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="16dp"/>
 
-            <!-- Appointment Card Template -->
-            <androidx.cardview.widget.CardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="8dp"
-                app:cardBackgroundColor="@color/maroon">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="APPOINTMENT REMINDER"
-                            android:textColor="@color/white"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="6h 30m 15s remaining"
-                            android:textColor="@color/white"
-                            android:layout_marginTop="4dp"/>
-                    </LinearLayout>
-
-                    <Button
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="View all →"
-                        android:textColor="@color/white"
-                        android:background="?attr/selectableItemBackground"/>
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
-
-            <!-- Add more appointment cards here -->
-        </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
     <!-- Bottom Navigation -->

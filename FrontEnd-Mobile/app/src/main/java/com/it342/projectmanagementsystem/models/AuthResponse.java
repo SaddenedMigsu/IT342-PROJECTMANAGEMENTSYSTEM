@@ -8,6 +8,7 @@ public class AuthResponse {
     private String email;
     private String firstName;
     private String lastName;
+    private String role;
 
     // Default constructor
     public AuthResponse() {
@@ -15,7 +16,7 @@ public class AuthResponse {
 
     // Parameterized constructor
     public AuthResponse(String message, String token, String userId, String studId, String email, 
-                       String firstName, String lastName) {
+                       String firstName, String lastName, String role) {
         this.message = message;
         this.token = token;
         this.userId = userId;
@@ -23,6 +24,7 @@ public class AuthResponse {
         this.email = email;
         this.firstName = firstName;
         this.lastName = lastName;
+        this.role = role;
     }
 
     // Getters and Setters
@@ -80,5 +82,13 @@ public class AuthResponse {
 
     public void setLastName(String lastName) {
         this.lastName = lastName;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 } 

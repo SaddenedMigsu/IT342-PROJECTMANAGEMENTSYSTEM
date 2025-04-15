@@ -1,4 +1,4 @@
-package com.it342.projectmanagementsystem;
+package com.it342.projectmanagementsystem.activities;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -12,6 +12,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.it342.projectmanagementsystem.R;
 import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.models.AuthResponse;
@@ -142,6 +143,13 @@ public class LoginFormActivity extends AppCompatActivity {
                 if (response.isSuccessful() && response.body() != null) {
                     AuthResponse authResponse = response.body();
                     Log.d(TAG, "Backend sync successful!");
+                    Log.d(TAG, "Response details:");
+                    Log.d(TAG, "Token: " + authResponse.getToken());
+                    Log.d(TAG, "UserId: " + authResponse.getUserId());
+                    Log.d(TAG, "Email: " + authResponse.getEmail());
+                    Log.d(TAG, "FirstName: " + authResponse.getFirstName());
+                    Log.d(TAG, "LastName: " + authResponse.getLastName());
+                    Log.d(TAG, "Role: " + authResponse.getRole());
 
                     // Save auth token and user info
                     SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
