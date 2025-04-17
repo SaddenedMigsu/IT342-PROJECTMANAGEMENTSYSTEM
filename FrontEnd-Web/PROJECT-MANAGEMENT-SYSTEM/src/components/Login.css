@@ -25,7 +25,9 @@
 }
 
 /* Add this to make sure the body and html also have no margins */
-html, body, #root {
+html,
+body,
+#root {
   margin: 0;
   padding: 0;
   overflow: hidden;

@@ -3,7 +3,6 @@ import "./SignUp.css";
 import cituLogo from "../assets/citu-logo.png";
 import { Link } from "react-router-dom";
 
-
 export default function Signup() {
   const [formData, setFormData] = useState({
     studentId: "",
@@ -32,7 +31,7 @@ export default function Signup() {
       <div className="signup-modal">
         <img src={cituLogo} alt="CIT-U Logo" className="citu-logo" />
         <h1 className="signup-title">Sign Up</h1>
-        
+
         <form className="signup-form" onSubmit={handleSubmit}>
           <input
             className="signup-input"
@@ -82,11 +81,16 @@ export default function Signup() {
             value={formData.password}
             onChange={handleChange}
           />
-          <button className="signup-button" type="submit">SIGN UP</button>
+          <button className="signup-button" type="submit">
+            SIGN UP
+          </button>
         </form>
-        
+
         <p className="login-link-text">
-          Already have an account? <Link to="/" className="login-link">Log in</Link>
+          Already have an account?{" "}
+          <Link to="/" className="login-link">
+            Log in
+          </Link>
         </p>
       </div>
     </div>
