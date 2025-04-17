@@ -20,6 +20,7 @@ import retrofit2.http.PUT;
 import retrofit2.http.Path;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ApiService {
     @POST("/api/auth/login")
@@ -37,11 +38,11 @@ public interface ApiService {
     @POST("/api/auth/logout")
     Call<Void> logout(@Header("Authorization") String token);
 
-    @POST("/api/appointments/create")
-    Call<Appointment> createAppointment(@Body AppointmentRequest request, @Header("Authorization") String token);
-
     @POST("/api/appointments/request-faculty")
-    Call<Appointment> requestFacultyAppointment(@Body FacultyAppointmentRequest request);
+    Call<Appointment> createAppointment(
+        @Body FacultyAppointmentRequest request,
+        @Header("Authorization") String token
+    );
 
     @GET("/api/appointments/user/{userId}")
     Call<List<Appointment>> getUserAppointments(
@@ -68,8 +69,8 @@ public interface ApiService {
         @Header("Authorization") String token
     );
 
-    @GET("/api/users/faculty")
-    Call<List<Faculty>> getFacultyMembers(@Header("Authorization") String token);
+    @GET("/api/users/faculties")
+    Call<List<Faculty>> getAllFaculties(@Header("Authorization") String token);
 
     @GET("/api/appointments")
     Call<List<Appointment>> getAppointments(@Header("Authorization") String token);
