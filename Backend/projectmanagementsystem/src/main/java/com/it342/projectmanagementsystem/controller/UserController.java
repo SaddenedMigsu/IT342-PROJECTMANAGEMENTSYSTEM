@@ -137,11 +137,27 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
         return ResponseEntity.ok("User updated successfully");
     }
 
-    // Delete User
+    // Delete User (Admin only)
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteUser(@PathVariable String id) throws FirebaseAuthException {
-        userService.deleteUser(id);
-        return ResponseEntity.ok("User deleted successfully");
+    public ResponseEntity<?> deleteUser(@PathVariable String id, Authentication authentication) {
+        try {
+            String adminEmail = authentication.getName();
+            logger.info("Admin {} attempting to delete user: {}", adminEmail, id);
+
+            userService.deleteUserAsAdmin(id, adminEmail);
+
+            logger.info("User {} successfully deleted by admin {}", id, adminEmail);
+            return ResponseEntity.ok("User deleted successfully");
+        } catch (IllegalArgumentException e) {
+            logger.error("User not found: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (SecurityException e) {
+            logger.error("Unauthorized access attempt: {}", e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            logger.error("Error deleting user: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SC_INTERNAL_SERVER_ERROR).body("Deletion failed: " + e.getMessage());
+        }
     }
 
     // Helper method to check if user is admin
