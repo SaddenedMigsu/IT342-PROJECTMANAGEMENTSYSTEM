@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./Login.css";
 import cituLogo from "../assets/citu-logo.png";
-//import authService from "../services/authService";
+import authService from "../services/authService";
 
 export default function Login() {
   const [identifier, setIdentifier] = useState("");
@@ -15,21 +15,24 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    
+
     try {
       const response = await authService.login(identifier, password);
       console.log("Login successful:", response);
-      
-      // Redirect based on user role
-      const { role } = response;
-      if (role === "ADMIN") {
-        navigate("/admin/dashboard");
-      } else {
-        navigate("/dashboard");
+
+      // Store the token
+      if (response.token) {
+        localStorage.setItem("token", response.token);
       }
+
+      // Redirect to admin dashboard
+      navigate("/admin/dashboard");
     } catch (err) {
       console.error("Login error:", err);
-      setError("Invalid credentials. Please try again.");
+      setError(
+        err.response?.data?.message ||
+          "Login failed. Please check your credentials and try again."
+      );
     } finally {
       setLoading(false);
     }
