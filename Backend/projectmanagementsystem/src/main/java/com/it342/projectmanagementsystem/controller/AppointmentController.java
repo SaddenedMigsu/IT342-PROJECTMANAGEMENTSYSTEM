@@ -727,19 +727,168 @@ public class AppointmentController {
 
     // 10. Appointment Tagging System
     @PostMapping("/{appointmentId}/tags")
-    public ResponseEntity<?> addTag(@PathVariable String appointmentId, @RequestBody TagRequest request) {
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Map<String, Object>> addTag(
+            @PathVariable String appointmentId,
+            @RequestBody TagRequest request,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Adding tag to appointment: {} by user: {}", appointmentId, userEmail);
+
+            // Get user document
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+
+            // Check if appointment exists and user has access
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            if (!participants.contains(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Create new tag
+            Map<String, Object> newTag = new HashMap<>();
+            newTag.put("name", request.getName());
+            newTag.put("color", request.getColor());
+
+            // Get current tags or initialize new list
+            List<Map<String, Object>> currentTags = (List<Map<String, Object>>) appointmentDoc.get("tags");
+            if (currentTags == null) {
+                currentTags = new ArrayList<>();
+            }
+
+            // Check if tag with same name already exists
+            boolean tagExists = currentTags.stream()
+                    .anyMatch(tag -> request.getName().equals(tag.get("name")));
+
+            if (tagExists) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("message", "Tag with this name already exists"));
+            }
+
+            // Add new tag
+            currentTags.add(newTag);
+
+            // Update appointment
+            appointmentDoc.getReference().update("tags", currentTags).get();
+
+            return ResponseEntity.ok(newTag);
+        } catch (Exception e) {
+            logger.error("Error adding tag to appointment: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
-    @DeleteMapping("/{appointmentId}/tags/{tagId}")
-    public ResponseEntity<?> removeTag(@PathVariable String appointmentId, @PathVariable String tagId) {
-        return ResponseEntity.ok().build();
+    @DeleteMapping("/{appointmentId}/tags/{tagName}")
+    public ResponseEntity<Void> removeTag(
+            @PathVariable String appointmentId,
+            @PathVariable String tagName,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Removing tag {} from appointment: {} by user: {}", tagName, appointmentId, userEmail);
+
+            // Get user document
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+
+            // Check if appointment exists and user has access
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            if (!participants.contains(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Get current tags
+            List<Map<String, Object>> currentTags = (List<Map<String, Object>>) appointmentDoc.get("tags");
+            if (currentTags == null || currentTags.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Remove tag with matching name
+            boolean removed = currentTags.removeIf(tag -> tagName.equals(tag.get("name")));
+            if (!removed) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Update appointment
+            appointmentDoc.getReference().update("tags", currentTags).get();
+
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            logger.error("Error removing tag from appointment: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
-    @GetMapping("/tags")
-    public ResponseEntity<?> getAllTags() {
+    @GetMapping("/{appointmentId}/tags")
+    public ResponseEntity<List<Map<String, Object>>> getAppointmentTags(
+            @PathVariable String appointmentId,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Fetching tags for appointment: {} by user: {}", appointmentId, userEmail);
 
-        return ResponseEntity.ok().build();
+            // Get user document
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+
+            // Check if appointment exists and user has access
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            if (!participants.contains(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Get tags
+            List<Map<String, Object>> tags = (List<Map<String, Object>>) appointmentDoc.get("tags");
+            return ResponseEntity.ok(tags != null ? tags : new ArrayList<>());
+        } catch (Exception e) {
+            logger.error("Error fetching appointment tags: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @DeleteMapping("/{appointmentId}")
@@ -1146,6 +1295,81 @@ public class AppointmentController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (Exception e) {
             logger.error("Error fetching appointment statistics: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PutMapping("/{appointmentId}/tags/{tagName}")
+    public ResponseEntity<Map<String, Object>> updateTag(
+            @PathVariable String appointmentId,
+            @PathVariable String tagName,
+            @RequestBody TagRequest request,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Updating tag {} in appointment: {} by user: {}", tagName, appointmentId, userEmail);
+
+            // Get user document
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+
+            // Check if appointment exists and user has access
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            if (!participants.contains(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Get current tags
+            List<Map<String, Object>> currentTags = (List<Map<String, Object>>) appointmentDoc.get("tags");
+            if (currentTags == null || currentTags.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Check if new tag name already exists (only if name is being changed)
+            if (!tagName.equals(request.getName()) && 
+                currentTags.stream().anyMatch(tag -> request.getName().equals(tag.get("name")))) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("message", "Tag with this name already exists"));
+            }
+
+            // Find and update the tag
+            boolean updated = false;
+            Map<String, Object> updatedTag = null;
+            for (Map<String, Object> tag : currentTags) {
+                if (tagName.equals(tag.get("name"))) {
+                    tag.put("name", request.getName());
+                    tag.put("color", request.getColor());
+                    updatedTag = tag;
+                    updated = true;
+                    break;
+                }
+            }
+
+            if (!updated) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Update appointment
+            appointmentDoc.getReference().update("tags", currentTags).get();
+
+            return ResponseEntity.ok(updatedTag);
+        } catch (Exception e) {
+            logger.error("Error updating tag in appointment: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
