@@ -239,6 +239,8 @@ public class AppointmentController {
                 logger.error("User {} is not a participant in appointment {}", userEmail, appointmentId);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
+
+            Timestamp now = Timestamp.now();
             
             // Update faculty approval status
             Map<String, Object> facultyApprovals = (Map<String, Object>) appointmentDoc.get("facultyApprovals");
@@ -263,15 +265,30 @@ public class AppointmentController {
             // Update appointment status
             Map<String, Object> updates = new HashMap<>();
             updates.put("facultyApprovals", facultyApprovals);
-            updates.put("updatedAt", Timestamp.now());
+            updates.put("updatedAt", now);
             
-            if (allApproved) {
-                updates.put("status", "SCHEDULED");
-                logger.info("All faculty approved appointment: {}", appointmentId);
-            }
+            String newStatus = allApproved ? "SCHEDULED" : "PENDING_APPROVAL";
+            updates.put("status", newStatus);
             
             // Update in Firestore
             firestore.collection("appointments").document(appointmentId).update(updates).get();
+            
+            // Update user-appointment relationship
+            var userAppointments = firestore.collection("user_appointments")
+                    .whereEqualTo("userId", userId)
+                    .whereEqualTo("appointmentId", appointmentId)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (!userAppointments.isEmpty()) {
+                var userAppointment = userAppointments.iterator().next();
+                Map<String, Object> relationshipUpdates = new HashMap<>();
+                relationshipUpdates.put("status", isApproved ? "CONFIRMED" : "DENIED");
+                relationshipUpdates.put("hasApproved", isApproved);
+                relationshipUpdates.put("updatedAt", now);
+                userAppointment.getReference().update(relationshipUpdates).get();
+            }
             
             // Create notification for requester
             String requesterId = appointmentDoc.getString("createdBy");
@@ -283,7 +300,7 @@ public class AppointmentController {
             notificationData.put("message", userDoc.getString("firstName") + " " + userDoc.getString("lastName") + 
                     " has " + (isApproved ? "approved" : "denied") + " your appointment request.");
             notificationData.put("status", "UNREAD");
-            notificationData.put("createdAt", Timestamp.now());
+            notificationData.put("createdAt", now);
             
             // Save notification
             firestore.collection("notifications").document().set(notificationData).get();
@@ -297,7 +314,12 @@ public class AppointmentController {
             appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
             appointment.setCreatedBy(requesterId);
             appointment.setParticipants(participants);
-            appointment.setStatus(allApproved ? "SCHEDULED" : "PENDING_APPROVAL");
+            appointment.setStatus(newStatus);
+            appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
+            appointment.setUpdatedAt(now);
+            appointment.setUserRole("PARTICIPANT");  // Faculty's role
+            appointment.setUserStatus(isApproved ? "CONFIRMED" : "DENIED");
+            appointment.setHasApproved(isApproved);
             
             return ResponseEntity.ok(appointment);
         } catch (Exception e) {
@@ -1309,6 +1331,9 @@ public class AppointmentController {
             ZonedDateTime phStartTime = startTime.atZone(philippineZone);
             ZonedDateTime phEndTime = endTime.atZone(philippineZone);
 
+            // Create timestamps for tracking
+            Timestamp now = Timestamp.now();
+
             // Create appointment data
             Map<String, Object> appointmentData = new HashMap<>();
             appointmentData.put("title", request.getTitle());
@@ -1321,8 +1346,8 @@ public class AppointmentController {
             appointmentData.put("createdBy", studentId);
             appointmentData.put("participants", List.of(studentId, request.getUserId()));
             appointmentData.put("status", "PENDING_APPROVAL");
-            appointmentData.put("createdAt", Timestamp.now());
-            appointmentData.put("updatedAt", Timestamp.now());
+            appointmentData.put("createdAt", now);
+            appointmentData.put("updatedAt", now);
             
             // Add faculty approval tracking
             Map<String, Boolean> facultyApprovals = new HashMap<>();
@@ -1335,8 +1360,27 @@ public class AppointmentController {
             var docRef = firestore.collection("appointments").document();
             docRef.set(appointmentData).get();
             
-            // Create user-appointment relationships
-            createUserAppointmentRelationships(docRef.getId(), studentId, List.of(request.getUserId()));
+            // Create user-appointment relationships with proper roles and status
+            // For student (creator)
+            Map<String, Object> studentRelationship = new HashMap<>();
+            studentRelationship.put("userId", studentId);
+            studentRelationship.put("appointmentId", docRef.getId());
+            studentRelationship.put("role", "CREATOR");
+            studentRelationship.put("status", "PENDING");
+            studentRelationship.put("createdAt", now);
+            studentRelationship.put("updatedAt", now);
+            firestore.collection("user_appointments").document().set(studentRelationship).get();
+            
+            // For faculty
+            Map<String, Object> facultyRelationship = new HashMap<>();
+            facultyRelationship.put("userId", request.getUserId());
+            facultyRelationship.put("appointmentId", docRef.getId());
+            facultyRelationship.put("role", "PARTICIPANT");
+            facultyRelationship.put("status", "PENDING");
+            facultyRelationship.put("hasApproved", false);
+            facultyRelationship.put("createdAt", now);
+            facultyRelationship.put("updatedAt", now);
+            firestore.collection("user_appointments").document().set(facultyRelationship).get();
             
             // Send notification to faculty
             sendFacultyAppointmentRequest(docRef.getId(), request.getUserId(), studentId, request);
@@ -1353,6 +1397,11 @@ public class AppointmentController {
             appointment.setCreatedBy(studentId);
             appointment.setParticipants(List.of(studentId, request.getUserId()));
             appointment.setStatus("PENDING_APPROVAL");
+            appointment.setCreatedAt(now);
+            appointment.setUpdatedAt(now);
+            appointment.setUserRole("CREATOR");  // For student creating the request
+            appointment.setUserStatus("PENDING");
+            appointment.setHasApproved(false);  // For tracking faculty approval
 
             logger.info("Faculty appointment request created with ID: {} for time: {} to {}", 
                 docRef.getId(), 

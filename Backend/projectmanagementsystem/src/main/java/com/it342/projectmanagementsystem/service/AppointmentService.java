@@ -75,55 +75,50 @@ public class AppointmentService {
         Timestamp start = Timestamp.ofTimeSecondsAndNanos(proposedStart.getEpochSecond(), proposedStart.getNano());
         Timestamp end = Timestamp.ofTimeSecondsAndNanos(proposedEnd.getEpochSecond(), proposedEnd.getNano());
 
-        // For each participant, check their existing appointments
-        for (String participantId : participants) {
-            // Get all appointments where the user is a participant
-            var userAppointments = firestore.collection("user_appointments")
-                    .whereEqualTo("userId", participantId)
+        // Assuming the second participant is always the faculty (based on the request-faculty endpoint)
+        String facultyId = participants.get(1);
+
+        // Get faculty's existing appointments
+        var facultyAppointments = firestore.collection("user_appointments")
+                .whereEqualTo("userId", facultyId)
+                .get()
+                .get()
+                .getDocuments();
+
+        // Check each of faculty's appointments for time conflicts
+        for (var userAppointment : facultyAppointments) {
+            String appointmentId = userAppointment.getString("appointmentId");
+            var appointmentDoc = firestore.collection("appointments")
+                    .document(appointmentId)
                     .get()
-                    .get()
-                    .getDocuments();
+                    .get();
 
-            // Get participant role
-            var participantDoc = firestore.collection("users").document(participantId).get().get();
-            String participantRole = participantDoc.getString("role");
+            if (appointmentDoc.exists()) {
+                Timestamp existingStart = appointmentDoc.getTimestamp("startTime");
+                Timestamp existingEnd = appointmentDoc.getTimestamp("endTime");
+                String status = appointmentDoc.getString("status");
 
-            // Check each appointment for time conflicts
-            for (var userAppointment : userAppointments) {
-                String appointmentId = userAppointment.getString("appointmentId");
-                var appointmentDoc = firestore.collection("appointments")
-                        .document(appointmentId)
-                        .get()
-                        .get();
-
-                if (appointmentDoc.exists()) {
-                    Timestamp existingStart = appointmentDoc.getTimestamp("startTime");
-                    Timestamp existingEnd = appointmentDoc.getTimestamp("endTime");
-                    String status = appointmentDoc.getString("status");
-
-                    // Only check conflicts with confirmed or pending appointments
-                    if (("SCHEDULED".equals(status) || "PENDING_APPROVAL".equals(status)) &&
-                        isTimeOverlapping(start, end, existingStart, existingEnd)) {
-                        
-                        // If this appointment is already in our conflicts map, just add the participant type
-                        if (uniqueConflicts.containsKey(appointmentId)) {
-                            List<String> participantTypes = (List<String>) uniqueConflicts.get(appointmentId).get("conflictingParticipantTypes");
-                            if (!participantTypes.contains(participantRole)) {
-                                participantTypes.add(participantRole);
-                            }
-                        } else {
-                            // Create new conflict entry
-                            Map<String, Object> conflict = new HashMap<>();
-                            conflict.put("conflictingAppointmentId", appointmentId);
-                            conflict.put("conflictingTitle", appointmentDoc.getString("title"));
-                            conflict.put("conflictingStartTime", existingStart);
-                            conflict.put("conflictingEndTime", existingEnd);
-                            conflict.put("conflictingStatus", status);
-                            conflict.put("conflictingParticipantTypes", new ArrayList<>(List.of(participantRole)));
-                            
-                            uniqueConflicts.put(appointmentId, conflict);
-                        }
+                // Check conflicts with confirmed or pending appointments
+                if (("SCHEDULED".equals(status) || "PENDING_APPROVAL".equals(status)) &&
+                    isTimeOverlapping(start, end, existingStart, existingEnd)) {
+                    
+                    // Create conflict entry
+                    Map<String, Object> conflict = new HashMap<>();
+                    conflict.put("conflictingAppointmentId", appointmentId);
+                    conflict.put("conflictingTitle", appointmentDoc.getString("title"));
+                    conflict.put("conflictingStartTime", existingStart);
+                    conflict.put("conflictingEndTime", existingEnd);
+                    conflict.put("conflictingStatus", status);
+                    
+                    // Get the student who requested this conflicting appointment
+                    String conflictingStudentId = appointmentDoc.getString("createdBy");
+                    var studentDoc = firestore.collection("users").document(conflictingStudentId).get().get();
+                    if (studentDoc.exists()) {
+                        String studentName = studentDoc.getString("firstName") + " " + studentDoc.getString("lastName");
+                        conflict.put("conflictingStudent", studentName);
                     }
+                    
+                    uniqueConflicts.put(appointmentId, conflict);
                 }
             }
         }
