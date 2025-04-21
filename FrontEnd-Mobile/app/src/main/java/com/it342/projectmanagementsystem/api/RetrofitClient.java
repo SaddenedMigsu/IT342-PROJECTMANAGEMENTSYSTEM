@@ -30,6 +30,9 @@ public class RetrofitClient {
             Log.d("RetrofitClient", message));
         loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
 
+        Log.d(TAG, "Initializing RetrofitClient with BASE_URL: " + BASE_URL);
+        Log.d(TAG, "Context: " + context.getPackageName());
+
         OkHttpClient client = new OkHttpClient.Builder()
             .addInterceptor(chain -> {
                 SharedPreferences prefs = context.getSharedPreferences("AuthPrefs", Context.MODE_PRIVATE);
@@ -43,9 +46,9 @@ public class RetrofitClient {
                 return chain.proceed(requestBuilder.build());
             })
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(60, TimeUnit.SECONDS)  // Increased timeout to 60 seconds
-            .readTimeout(60, TimeUnit.SECONDS)     // Increased timeout to 60 seconds
-            .writeTimeout(60, TimeUnit.SECONDS)    // Increased timeout to 60 seconds
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .connectionSpecs(Arrays.asList(
                 ConnectionSpec.CLEARTEXT,
@@ -55,7 +58,7 @@ public class RetrofitClient {
             .build();
 
         try {
-            Log.d(TAG, "Creating Retrofit instance with BASE_URL: " + BASE_URL);
+            Log.d(TAG, "Creating Retrofit instance...");
             retrofit = new Retrofit.Builder()
                 .baseUrl(BASE_URL)
                 .client(client)
@@ -63,7 +66,7 @@ public class RetrofitClient {
                 .build();
 
             apiService = retrofit.create(ApiService.class);
-            Log.d(TAG, "RetrofitClient initialized successfully");
+            Log.d(TAG, "RetrofitClient initialized successfully with API service: " + apiService);
         } catch (Exception e) {
             Log.e(TAG, "Error initializing RetrofitClient: " + e.getMessage(), e);
             throw e;

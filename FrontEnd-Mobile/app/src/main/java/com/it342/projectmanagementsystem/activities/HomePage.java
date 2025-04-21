@@ -135,9 +135,19 @@ public class HomePage extends AppCompatActivity {
             return;
         }
 
+        Log.d(TAG, "Displaying " + appointments.size() + " appointments");
         LayoutInflater inflater = LayoutInflater.from(this);
 
         for (Appointment appointment : appointments) {
+            // Log appointment details for debugging
+            Log.d(TAG, String.format("Processing appointment - ID: %s, Title: %s", 
+                appointment.getIdValue(), appointment.getTitleValue()));
+
+            if (appointment.getIdValue() == null) {
+                Log.e(TAG, "Found appointment with null ID - Title: " + appointment.getTitleValue());
+                continue;
+            }
+
             CardView appointmentCard = (CardView) inflater.inflate(
                 R.layout.appointment_card_template, appointmentsContainer, false);
 
@@ -148,11 +158,8 @@ public class HomePage extends AppCompatActivity {
             TextView statusText = appointmentCard.findViewById(R.id.statusText);
             Button viewAllButton = appointmentCard.findViewById(R.id.viewAllButton);
 
-            // Set appointment details with ID for debugging
-            String titleWithId = String.format("%s\nID: %s", 
-                appointment.getTitleValue(), 
-                appointment.getIdValue());
-            titleText.setText(titleWithId);
+            // Set appointment details
+            titleText.setText(appointment.getTitleValue());
             
             // Show description or default message
             String description = appointment.getDescriptionValue() != null ? 
@@ -189,15 +196,10 @@ public class HomePage extends AppCompatActivity {
             }
 
             viewAllButton.setOnClickListener(v -> {
-                // Show more details in a toast for debugging
-                String details = String.format(
-                    "ID: %s\nTitle: %s\nStatus: %s\nCreated by: %s",
-                    appointment.getIdValue(),
-                    appointment.getTitleValue(),
-                    appointment.getStatusValue(),
-                    appointment.getCreatedByValue() != null ? appointment.getCreatedByValue() : "Unknown"
-                );
-                Toast.makeText(HomePage.this, details, Toast.LENGTH_LONG).show();
+                // Navigate to AppointmentDetailsActivity
+                Intent intent = new Intent(HomePage.this, AppointmentDetailsActivity.class);
+                intent.putExtra("appointmentId", appointment.getIdValue());
+                startActivity(intent);
             });
 
             appointmentsContainer.addView(appointmentCard);
