@@ -250,4 +250,42 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @PatchMapping("/profile")
+    public ResponseEntity<?> updateProfile(@RequestBody Map<String, Object> updates, Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("User {} attempting to update profile", userEmail);
+
+            Map<String, Object> updatedProfile = userService.updateUserProfile(userEmail, updates);
+            logger.info("Profile updated successfully for: {}", userEmail);
+            return ResponseEntity.ok(updatedProfile);
+
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid update request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error updating profile: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Failed to update profile: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<?> getProfile(Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Fetching profile for user: {}", userEmail);
+
+            Map<String, Object> profile = userService.getUserProfile(userEmail);
+            logger.info("Successfully retrieved profile for user: {}", userEmail);
+            return ResponseEntity.ok(profile);
+
+        } catch (IllegalArgumentException e) {
+            logger.error("User not found: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            logger.error("Error fetching profile: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Failed to fetch profile: " + e.getMessage());
+        }
+    }
 }
