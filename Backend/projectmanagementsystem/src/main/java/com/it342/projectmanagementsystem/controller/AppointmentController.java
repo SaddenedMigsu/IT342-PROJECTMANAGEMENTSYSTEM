@@ -25,6 +25,9 @@ import java.util.concurrent.ExecutionException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -710,12 +713,226 @@ public class AppointmentController {
     }
 
     // 8. Export Appointment Summary
-    @GetMapping("/export")
-    public ResponseEntity<?> exportAppointments(@RequestParam String format,
-                                              @RequestParam(required = false) String startDate,
-                                              @RequestParam(required = false) String endDate) {
-        // TODO: Implement service logic
-        return ResponseEntity.ok().build();
+    @GetMapping(value = "/export", produces = "text/csv")
+    public ResponseEntity<byte[]> exportAppointments(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Exporting appointments for user: {} between {} and {}", userEmail, startDate, endDate);
+
+            // Get user document
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+            logger.info("Found user ID: {}", userId);
+
+            // Get user's appointments
+            var userAppointments = firestore.collection("user_appointments")
+                    .whereEqualTo("userId", userId)
+                    .get()
+                    .get();
+
+            logger.info("Found {} user appointments", userAppointments.size());
+
+            // Convert dates if provided
+            Timestamp startTimestamp = null;
+            Timestamp endTimestamp = null;
+            if (startDate != null && !startDate.isEmpty()) {
+                try {
+                    Instant start = Instant.parse(startDate);
+                    startTimestamp = Timestamp.ofTimeSecondsAndNanos(
+                        start.getEpochSecond(),
+                        start.getNano()
+                    );
+                    logger.info("Parsed start date: {} ({})", startTimestamp.toDate(), startTimestamp);
+                } catch (Exception e) {
+                    logger.error("Error parsing start date: {}", e.getMessage());
+                }
+            }
+            if (endDate != null && !endDate.isEmpty()) {
+                try {
+                    Instant end = Instant.parse(endDate);
+                    endTimestamp = Timestamp.ofTimeSecondsAndNanos(
+                        end.getEpochSecond(),
+                        end.getNano()
+                    );
+                    logger.info("Parsed end date: {} ({})", endTimestamp.toDate(), endTimestamp);
+                } catch (Exception e) {
+                    logger.error("Error parsing end date: {}", e.getMessage());
+                }
+            }
+
+            // Prepare CSV content
+            StringBuilder csv = new StringBuilder();
+            csv.append("Title,Description,Start Time,End Time,Status,Participants,Tags\n");
+
+            // Get appointment details and build CSV
+            ZoneId philippineZone = ZoneId.of("Asia/Manila");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    .withZone(philippineZone);
+
+            int processedAppointments = 0;
+            int skippedAppointments = 0;
+            for (var userAppointment : userAppointments) {
+                try {
+                    String appointmentId = userAppointment.getString("appointmentId");
+                    logger.info("Processing appointment: {}", appointmentId);
+
+                    var appointmentDoc = firestore.collection("appointments")
+                            .document(appointmentId)
+                            .get()
+                            .get();
+
+                    if (appointmentDoc.exists()) {
+                        Timestamp appointmentStart = appointmentDoc.getTimestamp("startTime");
+                        Timestamp appointmentEnd = appointmentDoc.getTimestamp("endTime");
+
+                        logger.info("Appointment {} time range: {} ({}) to {} ({})", 
+                            appointmentId, 
+                            appointmentStart.toDate(), appointmentStart,
+                            appointmentEnd.toDate(), appointmentEnd);
+
+                        // Apply date filter if dates are provided
+                        // Check if appointment falls within the date range
+                        if (startTimestamp != null && endTimestamp != null) {
+                            // Log comparison results
+                            boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
+                            boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
+                            
+                            logger.info("Date range check for appointment {}: isAfterEndDate={}, isBeforeStartDate={}", 
+                                appointmentId, isAfterEndDate, isBeforeStartDate);
+                            
+                            // Skip if appointment starts after end date or ends before start date
+                            if (isAfterEndDate || isBeforeStartDate) {
+                                logger.info("Appointment {} outside date range - Skipping", appointmentId);
+                                skippedAppointments++;
+                                continue;
+                            }
+                        } else if (startTimestamp != null) {
+                            // Skip if appointment ends before start date
+                            boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
+                            logger.info("Start date check for appointment {}: isBeforeStartDate={}", 
+                                appointmentId, isBeforeStartDate);
+                            
+                            if (isBeforeStartDate) {
+                                logger.info("Appointment {} before start date - Skipping", appointmentId);
+                                skippedAppointments++;
+                                continue;
+                            }
+                        } else if (endTimestamp != null) {
+                            // Skip if appointment starts after end date
+                            boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
+                            logger.info("End date check for appointment {}: isAfterEndDate={}", 
+                                appointmentId, isAfterEndDate);
+                            
+                            if (isAfterEndDate) {
+                                logger.info("Appointment {} after end date - Skipping", appointmentId);
+                                skippedAppointments++;
+                                continue;
+                            }
+                        }
+
+                        // Get participant names
+                        List<String> participantIds = (List<String>) appointmentDoc.get("participants");
+                        List<String> participantNames = new ArrayList<>();
+                        if (participantIds != null) {
+                            for (String participantId : participantIds) {
+                                var participantDoc = firestore.collection("users")
+                                        .document(participantId)
+                                        .get()
+                                        .get();
+                                if (participantDoc.exists()) {
+                                    String name = participantDoc.getString("firstName") + " " + 
+                                                participantDoc.getString("lastName");
+                                    participantNames.add(name);
+                                }
+                            }
+                        }
+
+                        // Get tags
+                        List<Object> tags = (List<Object>) appointmentDoc.get("tags");
+                        List<String> tagNames = new ArrayList<>();
+                        if (tags != null) {
+                            for (Object tagObj : tags) {
+                                if (tagObj instanceof Map) {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> tag = (Map<String, Object>) tagObj;
+                                    String tagName = (String) tag.get("name");
+                                    if (tagName != null) {
+                                        tagNames.add(tagName);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Format CSV line
+                        csv.append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("title"))))
+                           .append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("description"))))
+                           .append(String.format("\"%s\",", formatter.format(appointmentStart.toDate().toInstant())))
+                           .append(String.format("\"%s\",", formatter.format(appointmentEnd.toDate().toInstant())))
+                           .append(String.format("\"%s\",", appointmentDoc.getString("status")))
+                           .append(String.format("\"%s\",", escapeCsvField(String.join(", ", participantNames))))
+                           .append(String.format("\"%s\"\n", escapeCsvField(String.join(", ", tagNames))));
+
+                        processedAppointments++;
+                    } else {
+                        logger.warn("Appointment {} not found", appointmentId);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error processing appointment: {}", e.getMessage());
+                    // Continue processing other appointments
+                    continue;
+                }
+            }
+
+            logger.info("Processed {} appointments, skipped {} appointments", processedAppointments, skippedAppointments);
+
+            // Generate file name with timestamp
+            String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+                    .withZone(philippineZone)
+                    .format(Instant.now());
+            String filename = "appointments_" + timestamp + ".csv";
+
+            // Set response headers for file download
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+            headers.add(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8");
+            headers.add(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate");
+            headers.add(HttpHeaders.PRAGMA, "no-cache");
+            headers.add(HttpHeaders.EXPIRES, "0");
+
+            byte[] csvBytes = csv.toString().getBytes(StandardCharsets.UTF_8);
+            headers.add(HttpHeaders.CONTENT_LENGTH, String.valueOf(csvBytes.length));
+
+            logger.info("Generated CSV with {} bytes", csvBytes.length);
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(csvBytes);
+
+        } catch (Exception e) {
+            logger.error("Error exporting appointments: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // Helper method to escape CSV fields
+    private String escapeCsvField(String field) {
+        if (field == null) {
+            return "";
+        }
+        return field.replace("\"", "\"\"");
     }
 
     // 9. Appointment Status Tracking
