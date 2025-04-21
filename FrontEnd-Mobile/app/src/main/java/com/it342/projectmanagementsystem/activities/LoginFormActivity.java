@@ -93,11 +93,13 @@ public class LoginFormActivity extends AppCompatActivity {
         String password = etPassword.getText().toString().trim();
 
         if (!validateInputs()) {
+            Log.d(TAG, "Input validation failed");
             return;
         }
 
         // Show loading indicator
         progressBar.setVisibility(View.VISIBLE);
+        Log.d(TAG, "Progress bar shown, attempting Firebase authentication");
 
         Log.d(TAG, "Attempting to sign in with email: " + email);
         
@@ -106,16 +108,17 @@ public class LoginFormActivity extends AppCompatActivity {
                 .addOnCompleteListener(this, task -> {
                     if (task.isSuccessful()) {
                         // Sign in success, update UI with the signed-in user's information
-                        Log.d(TAG, "signInWithEmail:success");
+                        Log.d(TAG, "Firebase authentication successful, proceeding to backend sync");
                         
                         // Create login request for backend sync
                         LoginRequest loginRequest = new LoginRequest(email, password);
+                        Log.d(TAG, "Created login request for backend: " + loginRequest.toString());
                         syncWithBackend(loginRequest);
                     } else {
                         // If sign in fails, display a message to the user.
                         progressBar.setVisibility(View.GONE);
                         Exception exception = task.getException();
-                        Log.e(TAG, "signInWithEmail:failure", exception);
+                        Log.e(TAG, "Firebase authentication failed", exception);
                         
                         String errorMessage = "Authentication failed.";
                         if (exception != null) {
@@ -132,13 +135,16 @@ public class LoginFormActivity extends AppCompatActivity {
     }
 
     private void syncWithBackend(LoginRequest loginRequest) {
+        Log.d(TAG, "Starting backend sync with request: " + loginRequest.toString());
         ApiService apiService = RetrofitClient.getInstance().getApiService();
         Call<AuthResponse> call = apiService.login(loginRequest);
+        Log.d(TAG, "API call created, attempting to execute...");
 
         call.enqueue(new Callback<AuthResponse>() {
             @Override
             public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
                 progressBar.setVisibility(View.GONE);
+                Log.d(TAG, "Received response from backend. Code: " + response.code());
                 
                 if (response.isSuccessful() && response.body() != null) {
                     AuthResponse authResponse = response.body();

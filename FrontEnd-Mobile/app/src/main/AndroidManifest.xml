@@ -42,6 +42,12 @@
         <activity
             android:name=".activities.BookAppointmentActivity"
             android:exported="false" />
+        <activity
+            android:name=".activities.AppointmentDetailsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.EditAppointmentActivity"
+            android:exported="false" />
         <!-- <activity android:name=".FacultyDashboardActivity" /> -->
         <!-- <activity android:name=".StudentDashboardActivity" /> -->
     </application>

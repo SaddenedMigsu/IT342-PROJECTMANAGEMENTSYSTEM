@@ -1,12 +1,14 @@
 package com.it342.projectmanagementsystem.models
 
+import com.google.firebase.Timestamp
 import com.google.gson.annotations.SerializedName
+import com.it342.projectmanagementsystem.models.TimestampObject
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
 data class Appointment(
-    @SerializedName("id")
+    @SerializedName("appointmentId")
     var id: String? = null,
 
     @SerializedName("title")
@@ -16,10 +18,10 @@ data class Appointment(
     var description: String? = null,
 
     @SerializedName("startTime")
-    var startTime: TimestampObject? = null,
+    var startTime: Timestamp? = null,
 
     @SerializedName("endTime")
-    var endTime: TimestampObject? = null,
+    var endTime: Timestamp? = null,
 
     @SerializedName("status")
     var status: String? = null,
@@ -31,7 +33,25 @@ data class Appointment(
     var studentId: String? = null,
 
     @SerializedName("createdBy")
-    var createdBy: String? = null
+    var createdBy: String? = null,
+
+    @SerializedName("userRole")
+    var userRole: String? = null,
+
+    @SerializedName("userStatus")
+    var userStatus: String? = null,
+
+    @SerializedName("hasApproved")
+    var hasApproved: Boolean? = null,
+
+    @SerializedName("participants")
+    var participants: List<String>? = null,
+
+    @SerializedName("createdAt")
+    var createdAt: Timestamp? = null,
+
+    @SerializedName("updatedAt")
+    var updatedAt: Timestamp? = null
 ) {
     // Java interop methods
     @JvmName("getIdValue")
@@ -44,10 +64,10 @@ data class Appointment(
     fun getDescription() = description
 
     @JvmName("getStartTimeValue")
-    fun getStartTime() = startTime
+    fun getStartTime() = startTime?.let { TimestampObject.fromMillis(it.toDate().time) }
 
     @JvmName("getEndTimeValue")
-    fun getEndTime() = endTime
+    fun getEndTime() = endTime?.let { TimestampObject.fromMillis(it.toDate().time) }
 
     @JvmName("getStatusValue")
     fun getStatus() = status
@@ -74,12 +94,12 @@ data class Appointment(
 
     @JvmName("setStartTimeValue")
     fun setStartTime(value: TimestampObject) {
-        startTime = value
+        startTime = Timestamp(Date(value.toMillis()))
     }
 
     @JvmName("setEndTimeValue")
     fun setEndTime(value: TimestampObject) {
-        endTime = value
+        endTime = Timestamp(Date(value.toMillis()))
     }
 
     @JvmName("setStatusValue")
@@ -90,7 +110,7 @@ data class Appointment(
     fun getRemainingTime(): String {
         startTime?.let { timestamp ->
             val currentTime = System.currentTimeMillis()
-            val appointmentTime = timestamp.toMillis()
+            val appointmentTime = timestamp.toDate().time
             val timeDiff = appointmentTime - currentTime
 
             return when {
@@ -115,7 +135,7 @@ data class Appointment(
 
     fun getFormattedDateTime(): String {
         startTime?.let { timestamp ->
-            val date = Date(timestamp.toMillis())
+            val date = timestamp.toDate()
             return SimpleDateFormat(DATE_FORMAT, Locale.getDefault()).format(date)
         } ?: run {
             return "Date not available"
