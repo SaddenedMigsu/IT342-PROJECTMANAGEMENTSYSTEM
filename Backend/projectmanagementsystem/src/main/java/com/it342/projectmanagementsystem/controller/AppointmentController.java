@@ -884,7 +884,7 @@ public class AppointmentController {
 
     // Endpoint for students to request appointments with faculty
     @PostMapping("/request-faculty")
-    public ResponseEntity<Appointment> requestFacultyAppointment(
+    public ResponseEntity<?> requestFacultyAppointment(
             @RequestBody FacultyAppointmentRequest request,
             Authentication authentication) {
         try {
@@ -916,6 +916,20 @@ public class AppointmentController {
             if (!facultyDoc.exists() || !"FACULTY".equals(facultyDoc.getString("role"))) {
                 logger.error("Faculty {} does not exist or is not a faculty member", request.getUserId());
                 return ResponseEntity.badRequest().build();
+            }
+
+            // Check for appointment conflicts
+            List<Map<String, Object>> conflicts = appointmentService.checkAppointmentConflicts(
+                request.getStartTime(),
+                request.getEndTime(),
+                List.of(studentId, request.getUserId())
+            );
+
+            if (!conflicts.isEmpty()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("message", "Appointment conflicts detected");
+                response.put("conflicts", conflicts);
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
             }
 
             // Validate time format and convert to Philippine timezone
