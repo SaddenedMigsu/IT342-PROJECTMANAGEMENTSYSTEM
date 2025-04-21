@@ -18,6 +18,8 @@ public class User implements UserDetails {
     private String email;
     private String password;
     private String role;
+    private String phoneNumber;
+    private String profilePicture;
     private Timestamp createdAt;
     private boolean enabled;
 
@@ -26,7 +28,7 @@ public class User implements UserDetails {
 
     // Constructor with all fields
     public User(String userId, String studId, String firstName, String lastName, String course, 
-                String email, String password, String role, Timestamp createdAt, boolean enabled) {
+                String email, String password, String role, String phoneNumber, String profilePicture, Timestamp createdAt, boolean enabled) {
         this.userId = userId;
         this.studId = studId;
         this.firstName = firstName;
@@ -35,6 +37,8 @@ public class User implements UserDetails {
         this.email = email;
         this.password = password;
         this.role = role;
+        this.phoneNumber = phoneNumber;
+        this.profilePicture = profilePicture;
         this.createdAt = createdAt;
         this.enabled = enabled;
     }
@@ -132,6 +136,26 @@ public class User implements UserDetails {
     @PropertyName("createdAt")
     public void setCreatedAt(Timestamp createdAt) {
         this.createdAt = createdAt;
+    }
+
+    @PropertyName("phoneNumber")
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    @PropertyName("phoneNumber")
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    @PropertyName("profilePicture")
+    public String getProfilePicture() {
+        return profilePicture;
+    }
+
+    @PropertyName("profilePicture")
+    public void setProfilePicture(String profilePicture) {
+        this.profilePicture = profilePicture;
     }
 
     @Override

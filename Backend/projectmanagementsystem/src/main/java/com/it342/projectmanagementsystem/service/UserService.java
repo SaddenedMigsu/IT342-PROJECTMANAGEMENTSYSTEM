@@ -191,4 +191,132 @@ public class UserService {
         // Then delete from Firestore
         firestore.collection("users").document(userId).delete().get();
     }
+
+    public Map<String, Object> updateUserProfile(String userEmail, Map<String, Object> updates) throws Exception {
+        // Get user document
+        var userDocs = firestore.collection("users")
+                .whereEqualTo("email", userEmail)
+                .get()
+                .get()
+                .getDocuments();
+
+        if (userDocs.isEmpty()) {
+            throw new IllegalArgumentException("User not found");
+        }
+
+        var userDoc = userDocs.iterator().next();
+        String userId = userDoc.getId();
+
+        // Validate and prepare updates
+        Map<String, Object> validUpdates = new HashMap<>();
+
+        if (updates.containsKey("firstName")) {
+            validUpdates.put("firstName", updates.get("firstName"));
+        }
+        if (updates.containsKey("lastName")) {
+            validUpdates.put("lastName", updates.get("lastName"));
+        }
+        if (updates.containsKey("email")) {
+            String newEmail = (String) updates.get("email");
+            // Only process email update if it's different from current email
+            if (!newEmail.equals(userEmail)) {
+                // Check if email is already in use by another user
+                var existingUserDocs = firestore.collection("users")
+                        .whereEqualTo("email", newEmail)
+                        .get()
+                        .get()
+                        .getDocuments();
+                
+                if (!existingUserDocs.isEmpty() && !existingUserDocs.iterator().next().getId().equals(userId)) {
+                    throw new IllegalArgumentException("Email is already in use");
+                }
+                validUpdates.put("email", newEmail);
+
+                // Try to update email in Firebase Auth
+                try {
+                    // First try to get user by email
+                    UserRecord userRecord = null;
+                    try {
+                        userRecord = firebaseAuth.getUserByEmail(userEmail);
+                    } catch (FirebaseAuthException e) {
+                        // If user not found by email, try by UID
+                        try {
+                            userRecord = firebaseAuth.getUser(userId);
+                        } catch (FirebaseAuthException ex) {
+                            // If user doesn't exist in Firebase Auth, create one
+                            UserRecord.CreateRequest createRequest = new UserRecord.CreateRequest()
+                                .setUid(userId)
+                                .setEmail(newEmail)
+                                .setEmailVerified(false)
+                                .setDisplayName(userDoc.getString("firstName") + " " + userDoc.getString("lastName"));
+                            userRecord = firebaseAuth.createUser(createRequest);
+                        }
+                    }
+
+                    // Update the email if user exists
+                    if (userRecord != null) {
+                        UserRecord.UpdateRequest updateRequest = new UserRecord.UpdateRequest(userRecord.getUid())
+                            .setEmail(newEmail);
+                        firebaseAuth.updateUser(updateRequest);
+                    }
+                } catch (FirebaseAuthException e) {
+                    // Log the error but don't stop the Firestore update
+                    System.err.println("Warning: Failed to update email in Firebase Auth: " + e.getMessage());
+                }
+            }
+        }
+        if (updates.containsKey("phoneNumber")) {
+            validUpdates.put("phoneNumber", updates.get("phoneNumber"));
+        }
+        if (updates.containsKey("profilePicture")) {
+            validUpdates.put("profilePicture", updates.get("profilePicture"));
+        }
+
+        if (validUpdates.isEmpty()) {
+            throw new IllegalArgumentException("No valid fields to update");
+        }
+
+        // Update the user document
+        firestore.collection("users").document(userId).update(validUpdates).get();
+
+        // Get and return updated user data
+        var updatedUserDoc = firestore.collection("users").document(userId).get().get();
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("userId", updatedUserDoc.getId());
+        responseData.put("firstName", updatedUserDoc.getString("firstName"));
+        responseData.put("lastName", updatedUserDoc.getString("lastName"));
+        responseData.put("email", updatedUserDoc.getString("email"));
+        responseData.put("phoneNumber", updatedUserDoc.getString("phoneNumber"));
+        responseData.put("profilePicture", updatedUserDoc.getString("profilePicture"));
+        responseData.put("role", updatedUserDoc.getString("role"));
+
+        return responseData;
+    }
+
+    public Map<String, Object> getUserProfile(String userEmail) throws Exception {
+        // Get user document
+        var userDocs = firestore.collection("users")
+                .whereEqualTo("email", userEmail)
+                .get()
+                .get()
+                .getDocuments();
+
+        if (userDocs.isEmpty()) {
+            throw new IllegalArgumentException("User not found");
+        }
+
+        var userDoc = userDocs.iterator().next();
+        
+        // Create response with user profile data
+        Map<String, Object> profileData = new HashMap<>();
+        profileData.put("userId", userDoc.getId());
+        profileData.put("firstName", userDoc.getString("firstName"));
+        profileData.put("lastName", userDoc.getString("lastName"));
+        profileData.put("email", userDoc.getString("email"));
+        profileData.put("phoneNumber", userDoc.getString("phoneNumber"));
+        profileData.put("profilePicture", userDoc.getString("profilePicture"));
+        profileData.put("role", userDoc.getString("role"));
+
+        return profileData;
+    }
 }
