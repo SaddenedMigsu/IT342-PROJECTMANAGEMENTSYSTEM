@@ -26,6 +26,9 @@ public class Appointment {
     @JsonProperty("createdBy")
     private String createdBy;
     
+    @JsonProperty("creatorName")
+    private String creatorName;
+    
     @JsonProperty("participants")
     private List<String> participants;
     
@@ -121,6 +124,18 @@ public class Appointment {
     @JsonProperty("createdBy")
     public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;
+    }
+
+    @PropertyName("creatorName")
+    @JsonProperty("creatorName")
+    public String getCreatorName() {
+        return creatorName;
+    }
+
+    @PropertyName("creatorName")
+    @JsonProperty("creatorName")
+    public void setCreatorName(String creatorName) {
+        this.creatorName = creatorName;
     }
 
     @PropertyName("participants")

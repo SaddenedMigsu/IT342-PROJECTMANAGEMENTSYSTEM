@@ -695,13 +695,32 @@ public class AppointmentController {
                         .get();
 
                 if (appointmentDoc.exists()) {
+                    String creatorId = appointmentDoc.getString("createdBy");
+                    
+                    // Get creator's details
+                    var creatorDoc = firestore.collection("users")
+                            .document(creatorId)
+                            .get()
+                            .get();
+                    
+                    String creatorName = "Unknown User";
+                    if (creatorDoc.exists()) {
+                        String firstName = creatorDoc.getString("firstName");
+                        String lastName = creatorDoc.getString("lastName");
+                        if (firstName != null && lastName != null) {
+                            creatorName = firstName + " " + lastName;
+                        }
+                    }
+                    logger.info("Setting creator name for appointment {}: {}", appointmentId, creatorName);
+
                     Appointment appointment = new Appointment();
                     appointment.setAppointmentId(appointmentId);
                     appointment.setTitle(appointmentDoc.getString("title"));
                     appointment.setDescription(appointmentDoc.getString("description"));
                     appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
                     appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
-                    appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+                    appointment.setCreatedBy(creatorId);
+                    appointment.setCreatorName(creatorName);
                     appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
                     appointment.setStatus(appointmentDoc.getString("status"));
                     appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
@@ -1253,15 +1272,36 @@ public class AppointmentController {
                         .get();
 
                 if (appointmentDoc.exists()) {
+                    String creatorId = appointmentDoc.getString("createdBy");
+                    
+                    // Get creator's details
+                    var creatorDoc = firestore.collection("users")
+                            .document(creatorId)
+                            .get()
+                            .get();
+                    
+                    String creatorName = "Unknown User";
+                    if (creatorDoc.exists()) {
+                        String firstName = creatorDoc.getString("firstName");
+                        String lastName = creatorDoc.getString("lastName");
+                        if (firstName != null && lastName != null) {
+                            creatorName = firstName + " " + lastName;
+                        }
+                    }
+                    logger.info("Setting creator name for appointment {}: {}", appointmentId, creatorName);
+
                     Appointment appointment = new Appointment();
                     appointment.setAppointmentId(appointmentId);
                     appointment.setTitle(appointmentDoc.getString("title"));
                     appointment.setDescription(appointmentDoc.getString("description"));
                     appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
                     appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
-                    appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+                    appointment.setCreatedBy(creatorId);
+                    appointment.setCreatorName(creatorName);
                     appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
                     appointment.setStatus(appointmentDoc.getString("status"));
+                    appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
+                    appointment.setUpdatedAt(appointmentDoc.getTimestamp("updatedAt"));
                     
                     // Add user-specific appointment data
                     appointment.setUserRole(userAppointment.getString("role"));
@@ -1404,6 +1444,7 @@ public class AppointmentController {
             appointment.setEndTime(Timestamp.ofTimeSecondsAndNanos(
                     endTime.getEpochSecond(), endTime.getNano()));
             appointment.setCreatedBy(studentId);
+            appointment.setCreatorName(studentDoc.getString("firstName") + " " + studentDoc.getString("lastName"));
             appointment.setParticipants(List.of(studentId, request.getUserId()));
             appointment.setStatus("PENDING_APPROVAL");
             appointment.setCreatedAt(now);
