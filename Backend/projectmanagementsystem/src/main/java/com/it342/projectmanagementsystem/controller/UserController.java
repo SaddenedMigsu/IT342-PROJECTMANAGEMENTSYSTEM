@@ -3,6 +3,7 @@ package com.it342.projectmanagementsystem.controller;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.firebase.auth.FirebaseAuthException;
+import com.google.cloud.Timestamp;
 
 import com.it342.projectmanagementsystem.model.*;
 import com.it342.projectmanagementsystem.service.*;
@@ -286,6 +287,33 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
         } catch (Exception e) {
             logger.error("Error fetching profile: {}", e.getMessage());
             return ResponseEntity.internalServerError().body("Failed to fetch profile: " + e.getMessage());
+        }
+    }
+
+    // Update FCM Token
+    @PostMapping("/fcm-token")
+    public ResponseEntity<?> updateFcmToken(
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+        try {
+            String userId = authentication.getName();
+            String fcmToken = request.get("fcmToken");
+
+            if (fcmToken == null || fcmToken.isEmpty()) {
+                return ResponseEntity.badRequest().body("FCM token is required");
+            }
+
+            // Update user's FCM token in Firestore
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("fcmToken", fcmToken);
+            updates.put("updatedAt", Timestamp.now());
+
+            firestore.collection("users").document(userId).update(updates).get();
+
+            return ResponseEntity.ok().body("FCM token updated successfully");
+        } catch (Exception e) {
+            logger.error("Error updating FCM token: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

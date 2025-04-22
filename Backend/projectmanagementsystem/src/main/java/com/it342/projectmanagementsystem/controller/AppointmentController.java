@@ -7,6 +7,7 @@ import com.google.cloud.firestore.DocumentSnapshot;
 import com.it342.projectmanagementsystem.dto.*;
 import com.it342.projectmanagementsystem.model.Appointment;
 import com.it342.projectmanagementsystem.service.AppointmentService;
+import com.it342.projectmanagementsystem.service.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -36,10 +37,12 @@ public class AppointmentController {
     private static final Logger logger = LoggerFactory.getLogger(AppointmentController.class);
     private final Firestore firestore;
     private final AppointmentService appointmentService;
+    private final NotificationService notificationService;
 
-    public AppointmentController(Firestore firestore, AppointmentService appointmentService) {
+    public AppointmentController(Firestore firestore, AppointmentService appointmentService, NotificationService notificationService) {
         this.firestore = firestore;
         this.appointmentService = appointmentService;
+        this.notificationService = notificationService;
     }
 
     // Helper method to create user-appointment relationships
@@ -165,7 +168,7 @@ public class AppointmentController {
                 // Check if participant is faculty
                 var userDoc = firestore.collection("users").document(participantId).get().get();
                 if (userDoc.exists() && "FACULTY".equals(userDoc.getString("role"))) {
-                    // Create notification
+                    // Create notification in Firestore
                     Map<String, Object> notificationData = new HashMap<>();
                     notificationData.put("userId", participantId);
                     notificationData.put("appointmentId", appointmentId);
@@ -185,6 +188,14 @@ public class AppointmentController {
                     
                     // Save notification
                     firestore.collection("notifications").document().set(notificationData).get();
+                    
+                    // Send push notification
+                    notificationService.sendAppointmentRequest(
+                        participantId,
+                        appointmentId,
+                        title,
+                        requesterName
+                    );
                     
                     logger.info("Sent approval request to faculty: {} for appointment: {}", participantId, appointmentId);
                 }
@@ -290,20 +301,18 @@ public class AppointmentController {
                 userAppointment.getReference().update(relationshipUpdates).get();
             }
             
-            // Create notification for requester
+            // After updating appointment status, send notification
             String requesterId = appointmentDoc.getString("createdBy");
-            Map<String, Object> notificationData = new HashMap<>();
-            notificationData.put("userId", requesterId);
-            notificationData.put("appointmentId", appointmentId);
-            notificationData.put("type", "APPOINTMENT_RESPONSE");
-            notificationData.put("title", "Appointment " + (isApproved ? "Approved" : "Denied"));
-            notificationData.put("message", userDoc.getString("firstName") + " " + userDoc.getString("lastName") + 
-                    " has " + (isApproved ? "approved" : "denied") + " your appointment request.");
-            notificationData.put("status", "UNREAD");
-            notificationData.put("createdAt", now);
+            String title = appointmentDoc.getString("title");
+            String facultyName = userDoc.getString("firstName") + " " + userDoc.getString("lastName");
             
-            // Save notification
-            firestore.collection("notifications").document().set(notificationData).get();
+            // Send push notification to requester
+            notificationService.sendAppointmentUpdate(
+                requesterId,
+                appointmentId,
+                title,
+                isApproved ? "APPROVED" : "DENIED"
+            );
             
             // Create response
             Appointment appointment = new Appointment();
@@ -686,13 +695,32 @@ public class AppointmentController {
                         .get();
 
                 if (appointmentDoc.exists()) {
+                    String creatorId = appointmentDoc.getString("createdBy");
+                    
+                    // Get creator's details
+                    var creatorDoc = firestore.collection("users")
+                            .document(creatorId)
+                            .get()
+                            .get();
+                    
+                    String creatorName = "Unknown User";
+                    if (creatorDoc.exists()) {
+                        String firstName = creatorDoc.getString("firstName");
+                        String lastName = creatorDoc.getString("lastName");
+                        if (firstName != null && lastName != null) {
+                            creatorName = firstName + " " + lastName;
+                        }
+                    }
+                    logger.info("Setting creator name for appointment {}: {}", appointmentId, creatorName);
+
                     Appointment appointment = new Appointment();
                     appointment.setAppointmentId(appointmentId);
                     appointment.setTitle(appointmentDoc.getString("title"));
                     appointment.setDescription(appointmentDoc.getString("description"));
                     appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
                     appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
-                    appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+                    appointment.setCreatedBy(creatorId);
+                    appointment.setCreatorName(creatorName);
                     appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
                     appointment.setStatus(appointmentDoc.getString("status"));
                     appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
@@ -737,7 +765,7 @@ public class AppointmentController {
     // 8. Export Appointment Summary
     @GetMapping(value = "/export", produces = "text/csv")
     public ResponseEntity<byte[]> exportAppointments(
-            @RequestParam(required = false) String startDate,
+                                              @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             Authentication authentication) {
         try {
@@ -1050,8 +1078,8 @@ public class AppointmentController {
             
             if (userDocs.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
+    }
+
             var userDoc = userDocs.iterator().next();
             String userId = userDoc.getId();
 
@@ -1081,7 +1109,7 @@ public class AppointmentController {
             // Update appointment
             appointmentDoc.getReference().update("tags", currentTags).get();
 
-            return ResponseEntity.ok().build();
+        return ResponseEntity.ok().build();
         } catch (Exception e) {
             logger.error("Error removing tag from appointment: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
@@ -1244,15 +1272,36 @@ public class AppointmentController {
                         .get();
 
                 if (appointmentDoc.exists()) {
+                    String creatorId = appointmentDoc.getString("createdBy");
+                    
+                    // Get creator's details
+                    var creatorDoc = firestore.collection("users")
+                            .document(creatorId)
+                            .get()
+                            .get();
+                    
+                    String creatorName = "Unknown User";
+                    if (creatorDoc.exists()) {
+                        String firstName = creatorDoc.getString("firstName");
+                        String lastName = creatorDoc.getString("lastName");
+                        if (firstName != null && lastName != null) {
+                            creatorName = firstName + " " + lastName;
+                        }
+                    }
+                    logger.info("Setting creator name for appointment {}: {}", appointmentId, creatorName);
+
                     Appointment appointment = new Appointment();
                     appointment.setAppointmentId(appointmentId);
                     appointment.setTitle(appointmentDoc.getString("title"));
                     appointment.setDescription(appointmentDoc.getString("description"));
                     appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
                     appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
-                    appointment.setCreatedBy(appointmentDoc.getString("createdBy"));
+                    appointment.setCreatedBy(creatorId);
+                    appointment.setCreatorName(creatorName);
                     appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
                     appointment.setStatus(appointmentDoc.getString("status"));
+                    appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
+                    appointment.setUpdatedAt(appointmentDoc.getTimestamp("updatedAt"));
                     
                     // Add user-specific appointment data
                     appointment.setUserRole(userAppointment.getString("role"));
@@ -1395,6 +1444,7 @@ public class AppointmentController {
             appointment.setEndTime(Timestamp.ofTimeSecondsAndNanos(
                     endTime.getEpochSecond(), endTime.getNano()));
             appointment.setCreatedBy(studentId);
+            appointment.setCreatorName(studentDoc.getString("firstName") + " " + studentDoc.getString("lastName"));
             appointment.setParticipants(List.of(studentId, request.getUserId()));
             appointment.setStatus("PENDING_APPROVAL");
             appointment.setCreatedAt(now);
@@ -1636,6 +1686,46 @@ public class AppointmentController {
             return ResponseEntity.ok(updatedTag);
         } catch (Exception e) {
             logger.error("Error updating tag in appointment: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // Add a new endpoint for sending appointment reminders
+    @PostMapping("/{appointmentId}/remind")
+    public ResponseEntity<?> sendAppointmentReminder(
+            @PathVariable String appointmentId,
+            Authentication authentication) {
+        try {
+            String userId = authentication.getName();
+            
+            // Get appointment details
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String title = appointmentDoc.getString("title");
+            Timestamp startTime = appointmentDoc.getTimestamp("startTime");
+            
+            // Format start time
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .withZone(ZoneId.of("Asia/Manila"));
+            String formattedStartTime = formatter.format(startTime.toDate().toInstant());
+
+            // Get all participants
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            for (String participantId : participants) {
+                notificationService.sendAppointmentReminder(
+                    participantId,
+                    appointmentId,
+                    title,
+                    formattedStartTime
+                );
+            }
+
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            logger.error("Error sending appointment reminder: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
