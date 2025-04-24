@@ -58,6 +58,7 @@ public class UserService {
         userMap.put("password", encryptedPassword);
         userMap.put("role", role);
         userMap.put("createdAt", com.google.cloud.firestore.FieldValue.serverTimestamp());
+        userMap.put("enabled", true);  // Set enabled to true by default for new users
 
         try {
             firestore.collection("users").document(userId).set(userMap).get(); // Forces synchronous write
@@ -318,5 +319,16 @@ public class UserService {
         profileData.put("role", userDoc.getString("role"));
 
         return profileData;
+    }
+
+    public long getTotalActiveUsers() throws ExecutionException, InterruptedException {
+        // Get all users from Firestore
+        var userDocs = firestore.collection("users")
+                .get()
+                .get()
+                .getDocuments();
+        
+        // Count all users (they are considered active by default)
+        return userDocs.size();
     }
 }

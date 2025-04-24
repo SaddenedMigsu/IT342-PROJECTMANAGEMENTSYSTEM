@@ -1729,4 +1729,90 @@ public class AppointmentController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @GetMapping("/all")
+    public ResponseEntity<List<Appointment>> getAllAppointments(Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("Getting all appointments, requested by user: {}", userEmail);
+
+            // Get user document to check role
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userRole = userDoc.getString("role");
+
+            // Only allow ADMIN and FACULTY to view all appointments
+            if (!"ADMIN".equals(userRole) && !"FACULTY".equals(userRole)) {
+                logger.error("User {} does not have permission to view all appointments", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // Get all appointments from Firestore
+            var appointmentDocs = firestore.collection("appointments")
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            List<Appointment> appointments = new ArrayList<>();
+            for (var appointmentDoc : appointmentDocs) {
+                String creatorId = appointmentDoc.getString("createdBy");
+                
+                // Get creator's details
+                var creatorDoc = firestore.collection("users")
+                        .document(creatorId)
+                        .get()
+                        .get();
+                
+                String creatorName = "Unknown User";
+                if (creatorDoc.exists()) {
+                    String firstName = creatorDoc.getString("firstName");
+                    String lastName = creatorDoc.getString("lastName");
+                    if (firstName != null && lastName != null) {
+                        creatorName = firstName + " " + lastName;
+                    }
+                }
+
+                Appointment appointment = new Appointment();
+                appointment.setAppointmentId(appointmentDoc.getId());
+                appointment.setTitle(appointmentDoc.getString("title"));
+                appointment.setDescription(appointmentDoc.getString("description"));
+                appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
+                appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
+                appointment.setCreatedBy(creatorId);
+                appointment.setCreatorName(creatorName);
+                appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
+                appointment.setStatus(appointmentDoc.getString("status"));
+                appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
+                appointment.setUpdatedAt(appointmentDoc.getTimestamp("updatedAt"));
+                
+                // For faculty, add approval status if applicable
+                if ("FACULTY".equals(userRole)) {
+                    Map<String, Object> facultyApprovals = (Map<String, Object>) appointmentDoc.get("facultyApprovals");
+                    if (facultyApprovals != null) {
+                        String userId = userDoc.getId();
+                        Boolean hasApproved = (Boolean) facultyApprovals.get(userId);
+                        appointment.setHasApproved(hasApproved != null ? hasApproved : false);
+                    }
+                }
+                
+                appointments.add(appointment);
+            }
+
+            logger.info("Successfully retrieved {} appointments", appointments.size());
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            logger.error("Error fetching all appointments: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 } 
