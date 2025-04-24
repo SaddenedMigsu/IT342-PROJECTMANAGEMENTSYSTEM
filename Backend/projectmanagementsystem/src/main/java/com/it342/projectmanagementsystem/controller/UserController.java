@@ -316,4 +316,17 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @GetMapping("/active/count")
+    public ResponseEntity<?> getTotalActiveUsers() {
+        try {
+            long activeUsersCount = userService.getTotalActiveUsers();
+            Map<String, Object> response = new HashMap<>();
+            response.put("totalActiveUsers", activeUsersCount);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error getting total active users: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Failed to get total active users: " + e.getMessage());
+        }
+    }
 }
