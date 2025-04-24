@@ -43,19 +43,27 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
         // Initialize views
         initializeViews();
 
-        // Get appointment ID from intent
-        appointmentId = getIntent().getStringExtra("appointmentId");
-        Log.d(TAG, "Received appointmentId: " + appointmentId);
+        // Get appointment from intent
+        appointment = getIntent().getParcelableExtra("APPOINTMENT_PARCEL");
+        Log.d(TAG, "Received appointment: " + (appointment != null ? "not null" : "null"));
         
+        if (appointment == null) {
+            Log.e(TAG, "Invalid appointment received");
+            Toast.makeText(this, "Error: Invalid appointment data", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        appointmentId = appointment.getId();
         if (appointmentId == null || appointmentId.equals("null")) {
-            Log.e(TAG, "Invalid appointment ID received");
+            Log.e(TAG, "Invalid appointment ID in appointment object");
             Toast.makeText(this, "Error: Invalid appointment ID", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        // Load appointment details
-        loadAppointmentDetails();
+        // Update UI with the appointment data we already have
+        updateUI();
 
         // Set click listeners
         setupClickListeners();

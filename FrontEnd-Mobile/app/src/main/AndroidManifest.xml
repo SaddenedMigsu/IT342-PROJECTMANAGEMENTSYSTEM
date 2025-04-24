@@ -48,7 +48,21 @@
         <activity
             android:name=".activities.EditAppointmentActivity"
             android:exported="false" />
-        <!-- <activity android:name=".FacultyDashboardActivity" /> -->
+        <activity
+            android:name=".activities.FacultyDashboardActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.ManageAppointmentRequestsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.ViewAppointmentScheduleActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.ManageAppointmentParticipantsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.AppointmentRequestDetailsActivity"
+            android:exported="false" />
         <!-- <activity android:name=".StudentDashboardActivity" /> -->
     </application>
 
