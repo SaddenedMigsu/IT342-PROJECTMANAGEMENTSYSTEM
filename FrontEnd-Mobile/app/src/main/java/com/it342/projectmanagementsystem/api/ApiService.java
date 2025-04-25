@@ -74,4 +74,7 @@ public interface ApiService {
 
     @GET("/api/appointments")
     Call<List<Appointment>> getAppointments(@Header("Authorization") String token);
+
+    @POST("/api/appointments/{appointmentId}/approve")
+    Call<Appointment> approveAppointment(@Path("appointmentId") String appointmentId, @Body Map<String, Boolean> approvalBody, @Header("Authorization") String token);
 } 

@@ -1,12 +1,15 @@
 package com.it342.projectmanagementsystem.models
 
+import android.os.Parcelable
 import com.google.firebase.Timestamp
 import com.google.gson.annotations.SerializedName
 import com.it342.projectmanagementsystem.models.TimestampObject
+import kotlinx.parcelize.Parcelize
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
+@Parcelize
 data class Appointment(
     @SerializedName("appointmentId")
     var id: String? = null,
@@ -35,6 +38,9 @@ data class Appointment(
     @SerializedName("createdBy")
     var createdBy: String? = null,
 
+    @SerializedName("creatorName")
+    var creatorName: String? = null,
+
     @SerializedName("userRole")
     var userRole: String? = null,
 
@@ -51,8 +57,20 @@ data class Appointment(
     var createdAt: Timestamp? = null,
 
     @SerializedName("updatedAt")
-    var updatedAt: Timestamp? = null
-) {
+    var updatedAt: Timestamp? = null,
+
+    @SerializedName("appointmentType")
+    var appointmentType: String? = null,
+
+    @SerializedName("timezone")
+    var timezone: String? = null,
+
+    @SerializedName("facultyApprovals")
+    var facultyApprovals: Map<String, Boolean>? = null,
+
+    @SerializedName("requiresApproval")
+    var requiresApproval: Boolean? = null
+) : Parcelable {
     // Java interop methods
     @JvmName("getIdValue")
     fun getId() = id
@@ -64,10 +82,10 @@ data class Appointment(
     fun getDescription() = description
 
     @JvmName("getStartTimeValue")
-    fun getStartTime() = startTime?.let { TimestampObject.fromMillis(it.toDate().time) }
+    fun getStartTime() = startTime
 
     @JvmName("getEndTimeValue")
-    fun getEndTime() = endTime?.let { TimestampObject.fromMillis(it.toDate().time) }
+    fun getEndTime() = endTime
 
     @JvmName("getStatusValue")
     fun getStatus() = status
@@ -81,6 +99,9 @@ data class Appointment(
     @JvmName("getCreatedByValue")
     fun getCreatedBy() = createdBy
 
+    @JvmName("getCreatorNameValue")
+    fun getCreatorName() = creatorName
+
     // Setter methods
     @JvmName("setTitleValue")
     fun setTitle(value: String) {
@@ -93,13 +114,13 @@ data class Appointment(
     }
 
     @JvmName("setStartTimeValue")
-    fun setStartTime(value: TimestampObject) {
-        startTime = Timestamp(Date(value.toMillis()))
+    fun setStartTime(value: Timestamp) {
+        startTime = value
     }
 
     @JvmName("setEndTimeValue")
-    fun setEndTime(value: TimestampObject) {
-        endTime = Timestamp(Date(value.toMillis()))
+    fun setEndTime(value: Timestamp) {
+        endTime = value
     }
 
     @JvmName("setStatusValue")

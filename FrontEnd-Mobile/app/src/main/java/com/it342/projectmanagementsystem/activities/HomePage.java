@@ -174,9 +174,9 @@ public class HomePage extends AppCompatActivity {
             statusText.setText(detailedStatus);
 
             // Calculate time remaining
-            TimestampObject startTimeObj = appointment.getStartTimeValue();
-            if (startTimeObj != null) {
-                long startTimeMillis = startTimeObj.toMillis();
+            com.google.firebase.Timestamp startTimeTs = appointment.getStartTimeValue();
+            if (startTimeTs != null) {
+                long startTimeMillis = startTimeTs.toDate().getTime();
                 long nowMillis = System.currentTimeMillis();
                 long diffInMillis = startTimeMillis - nowMillis;
                 
@@ -198,7 +198,7 @@ public class HomePage extends AppCompatActivity {
             viewAllButton.setOnClickListener(v -> {
                 // Navigate to AppointmentDetailsActivity
                 Intent intent = new Intent(HomePage.this, AppointmentDetailsActivity.class);
-                intent.putExtra("appointmentId", appointment.getIdValue());
+                intent.putExtra("APPOINTMENT_PARCEL", appointment);
                 startActivity(intent);
             });
 

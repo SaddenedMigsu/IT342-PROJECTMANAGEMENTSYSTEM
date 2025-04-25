@@ -17,7 +17,6 @@ import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.models.AuthResponse;
 import com.it342.projectmanagementsystem.models.LoginRequest;
-import com.google.firebase.auth.FirebaseAuth;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -28,17 +27,13 @@ public class LoginFormActivity extends AppCompatActivity {
     private static final String TAG = "LoginFormActivity";
     private EditText etEmail, etPassword;
     private Button btnSignIn;
-    private TextView tvForgotPassword;
     private ProgressBar progressBar;
-    private FirebaseAuth mAuth;
+    private ApiService apiService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login_form);
-
-        // Initialize Firebase Auth
-        mAuth = FirebaseAuth.getInstance();
 
         // Check if there's a success message from registration
         if (getIntent().hasExtra("REGISTRATION_SUCCESS")) {
@@ -47,48 +42,24 @@ public class LoginFormActivity extends AppCompatActivity {
         }
 
         // Initialize views
+        initializeViews();
+        // Initialize ApiService
+        apiService = RetrofitClient.getInstance().getApiService();
+
+        // Set click listeners
+        btnSignIn.setOnClickListener(v -> attemptLoginWithApi());
+        
+        Log.d(TAG, "Activity created. Using Custom API for login.");
+    }
+
+    private void initializeViews() {
         etEmail = findViewById(R.id.etEmail);
         etPassword = findViewById(R.id.etPassword);
         btnSignIn = findViewById(R.id.btnSignIn);
-        tvForgotPassword = findViewById(R.id.tvForgotPassword);
         progressBar = findViewById(R.id.progressBar);
-
-        // Set click listeners
-        btnSignIn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (validateInputs()) {
-                    attemptLogin();
-                }
-            }
-        });
-
-        tvForgotPassword.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                String email = etEmail.getText().toString().trim();
-                if (!email.isEmpty() && Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                    mAuth.sendPasswordResetEmail(email)
-                            .addOnCompleteListener(task -> {
-                                if (task.isSuccessful()) {
-                                    Toast.makeText(LoginFormActivity.this, 
-                                        "Password reset email sent", Toast.LENGTH_LONG).show();
-                                } else {
-                                    Toast.makeText(LoginFormActivity.this, 
-                                        "Failed to send reset email", Toast.LENGTH_SHORT).show();
-                                }
-                            });
-                } else {
-                    Toast.makeText(LoginFormActivity.this, 
-                        "Please enter a valid email address", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-        
-        Log.d(TAG, "Activity created. Will connect to Firebase Auth");
     }
-
-    private void attemptLogin() {
+    
+    private void attemptLoginWithApi() {
         String email = etEmail.getText().toString().trim();
         String password = etPassword.getText().toString().trim();
 
@@ -99,109 +70,95 @@ public class LoginFormActivity extends AppCompatActivity {
 
         // Show loading indicator
         progressBar.setVisibility(View.VISIBLE);
-        Log.d(TAG, "Progress bar shown, attempting Firebase authentication");
+        Log.d(TAG, "Progress bar shown, attempting API authentication");
 
-        Log.d(TAG, "Attempting to sign in with email: " + email);
+        Log.d(TAG, "Attempting to sign in via API with email: " + email);
         
-        // Attempt Firebase Authentication
-        mAuth.signInWithEmailAndPassword(email, password)
-                .addOnCompleteListener(this, task -> {
-                    if (task.isSuccessful()) {
-                        // Sign in success, update UI with the signed-in user's information
-                        Log.d(TAG, "Firebase authentication successful, proceeding to backend sync");
-                        
-                        // Create login request for backend sync
-                        LoginRequest loginRequest = new LoginRequest(email, password);
-                        Log.d(TAG, "Created login request for backend: " + loginRequest.toString());
-                        syncWithBackend(loginRequest);
-                    } else {
-                        // If sign in fails, display a message to the user.
-                        progressBar.setVisibility(View.GONE);
-                        Exception exception = task.getException();
-                        Log.e(TAG, "Firebase authentication failed", exception);
-                        
-                        String errorMessage = "Authentication failed.";
-                        if (exception != null) {
-                            errorMessage += " Error: " + exception.getMessage();
-                            if (exception.getCause() != null) {
-                                errorMessage += "\nCause: " + exception.getCause().getMessage();
-                            }
-                        }
-                        
-                        Toast.makeText(LoginFormActivity.this, errorMessage,
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
-    }
-
-    private void syncWithBackend(LoginRequest loginRequest) {
-        Log.d(TAG, "Starting backend sync with request: " + loginRequest.toString());
-        ApiService apiService = RetrofitClient.getInstance().getApiService();
+        // Create request for backend
+        LoginRequest loginRequest = new LoginRequest(email, password);
+        Log.d(TAG, "Created login request - identifier: " + email);
+        
+        // Call the backend API directly
         Call<AuthResponse> call = apiService.login(loginRequest);
-        Log.d(TAG, "API call created, attempting to execute...");
+        Log.d(TAG, "API call created, attempting to execute with URL: " + call.request().url());
 
         call.enqueue(new Callback<AuthResponse>() {
             @Override
             public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
                 progressBar.setVisibility(View.GONE);
                 Log.d(TAG, "Received response from backend. Code: " + response.code());
+                Log.d(TAG, "Response headers: " + response.headers());
                 
                 if (response.isSuccessful() && response.body() != null) {
                     AuthResponse authResponse = response.body();
-                    Log.d(TAG, "Backend sync successful!");
-                    Log.d(TAG, "Response details:");
-                    Log.d(TAG, "Token: " + authResponse.getToken());
-                    Log.d(TAG, "UserId: " + authResponse.getUserId());
-                    Log.d(TAG, "Email: " + authResponse.getEmail());
-                    Log.d(TAG, "FirstName: " + authResponse.getFirstName());
-                    Log.d(TAG, "LastName: " + authResponse.getLastName());
-                    Log.d(TAG, "Role: " + authResponse.getRole());
+                    // Check for role and token directly within AuthResponse
+                    if (authResponse.getRole() != null && authResponse.getToken() != null) { 
+                        Log.d(TAG, "Backend login successful!");
+                        Log.d(TAG, "Role: " + authResponse.getRole());
+                        // Save auth token and user info
+                        saveUserData(authResponse);
+                        // Navigate based on role
+                        navigateToHomePage(authResponse.getRole());
+                    } else {
+                        Log.e(TAG, "Backend login failed: Invalid data in response");
+                        Toast.makeText(LoginFormActivity.this, "Login failed: Invalid response data", Toast.LENGTH_LONG).show();
+                    }
 
-                    // Save auth token and user info
-                    SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
-                    SharedPreferences.Editor editor = prefs.edit();
-                    editor.putString("token", authResponse.getToken());
-                    editor.putString("userId", authResponse.getUserId());
-                    editor.putString("studId", authResponse.getStudId());
-                    editor.putString("email", authResponse.getEmail());
-                    editor.putString("firstName", authResponse.getFirstName());
-                    editor.putString("lastName", authResponse.getLastName());
-                    editor.apply();
-
-                    // Navigate to HomePage with clear task flag
-                    Intent intent = new Intent(LoginFormActivity.this, HomePage.class);
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    startActivity(intent);
-                    finish();
                 } else {
-                    try {
+                    String errorMessage = "Login failed.";
+                     try {
                         if (response.errorBody() != null) {
-                            String errorBody = response.errorBody().string();
-                            Log.e(TAG, "Backend sync error: " + errorBody);
-                            // Don't show backend sync errors to user since Firebase auth was successful
+                            errorMessage = response.errorBody().string(); 
+                            Log.e(TAG, "Backend login error: " + errorMessage);
+                        } else {
+                            errorMessage += " (Code: " + response.code() + ")";
+                            Log.e(TAG, "Backend login failed with code: " + response.code());
                         }
                     } catch (IOException e) {
                         Log.e(TAG, "Error reading error body", e);
                     }
-                    // Still proceed to HomePage even if backend sync fails
-                    Intent intent = new Intent(LoginFormActivity.this, HomePage.class);
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    startActivity(intent);
-                    finish();
+                    Toast.makeText(LoginFormActivity.this, errorMessage, Toast.LENGTH_LONG).show();
                 }
             }
 
             @Override
             public void onFailure(Call<AuthResponse> call, Throwable t) {
                 progressBar.setVisibility(View.GONE);
-                Log.e(TAG, "Network error during backend sync", t);
-                // Still proceed to HomePage even if backend sync fails
-                Intent intent = new Intent(LoginFormActivity.this, HomePage.class);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                startActivity(intent);
-                finish();
+                Log.e(TAG, "Network error during API login", t);
+                Toast.makeText(LoginFormActivity.this, "Login failed: Network error - " + t.getMessage(),
+                        Toast.LENGTH_LONG).show();
             }
         });
+    }
+
+    private void saveUserData(AuthResponse authResponse) { 
+        SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putString("token", authResponse.getToken());
+        editor.putString("userId", authResponse.getUserId()); 
+        editor.putString("studId", authResponse.getStudId()); // Assuming studId might be needed
+        editor.putString("email", authResponse.getEmail());
+        editor.putString("firstName", authResponse.getFirstName());
+        editor.putString("lastName", authResponse.getLastName());
+        editor.putString("role", authResponse.getRole());
+        editor.apply();
+        Log.i(TAG, "User data saved successfully. Role: " + authResponse.getRole());
+    }
+
+    private void navigateToHomePage(String userRole) {
+        Log.d(TAG, "Navigating based on role: " + userRole);
+        Intent intent;
+        if ("FACULTY".equalsIgnoreCase(userRole)) {
+            intent = new Intent(LoginFormActivity.this, FacultyDashboardActivity.class); 
+            Log.i(TAG, "Navigating to Faculty Dashboard");
+        } else {
+            intent = new Intent(LoginFormActivity.this, HomePage.class);
+            Log.i(TAG, "Navigating to Student/Default Home Page");
+        }
+        // Use clear task flags to prevent returning to login
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK); 
+        startActivity(intent);
+        finish(); // Close LoginFormActivity
     }
 
     private boolean validateInputs() {
