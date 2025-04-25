@@ -1,32 +1,50 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
   IconButton,
   Button,
   TextField,
-  ToggleButtonGroup,
-  ToggleButton,
   Paper,
   Tooltip,
   Avatar,
   Chip,
+  Menu,
+  MenuItem,
 } from "@mui/material";
 import {
   ChevronLeft,
   ChevronRight,
   Search as SearchIcon,
-  ArrowBack,
   Event,
   AccessTime,
   Group,
+  ExpandMore,
 } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
 
-const Schedule = () => {
-  const [viewMode, setViewMode] = useState("Week");
+function Schedule() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentDate, setCurrentDate] = useState(new Date(2024, 2, 1));
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [yearMenuAnchor, setYearMenuAnchor] = useState(null);
+
+  // Generate array of years (current year ± 10 years)
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 21 }, (_, i) => currentYear - 10 + i);
+
+  const handleYearClick = (event) => {
+    setYearMenuAnchor(event.currentTarget);
+  };
+
+  const handleYearClose = () => {
+    setYearMenuAnchor(null);
+  };
+
+  const handleYearSelect = (year) => {
+    setCurrentDate(new Date(year, currentDate.getMonth(), 1));
+    handleYearClose();
+  };
 
   // Mock data for appointments
   const appointments = [
@@ -217,512 +235,515 @@ const Schedule = () => {
     },
   ];
 
-  // Function to get the start of the week
-  const getStartOfWeek = (date) => {
-    const newDate = new Date(date);
-    const day = newDate.getDay();
-    newDate.setDate(newDate.getDate() - day);
-    return newDate;
+  // Function to get all dates for the current month view
+  const getDaysInMonth = (year, month) => {
+    const date = new Date(year, month, 1);
+    const days = [];
+    
+    // Get the first day of the month
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+    // Get the last day of the month
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    
+    // Get the day of week for the first day (0-6)
+    const firstDayIndex = firstDay.getDay();
+    
+    // Add days from previous month
+    const prevMonthLastDay = new Date(date.getFullYear(), date.getMonth(), 0).getDate();
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const prevDate = new Date(date.getFullYear(), date.getMonth() - 1, prevMonthLastDay - i);
+      days.push({
+        date: prevDate,
+        isCurrentMonth: false
+      });
+    }
+    
+    // Add days of current month
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+      const currentDate = new Date(date.getFullYear(), date.getMonth(), day);
+      days.push({
+        date: currentDate,
+        isCurrentMonth: true
+      });
+    }
+    
+    // Add days from next month to complete the calendar grid
+    const remainingDays = 42 - days.length; // 6 rows * 7 days = 42
+    for (let day = 1; day <= remainingDays; day++) {
+      const nextDate = new Date(date.getFullYear(), date.getMonth() + 1, day);
+      days.push({
+        date: nextDate,
+        isCurrentMonth: false
+      });
+    }
+    
+    return days;
   };
 
-  // Function to get dates for the week
-  const getWeekDates = () => {
-    const startDate = getStartOfWeek(currentDate);
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(startDate);
-      date.setDate(startDate.getDate() + i);
-      return date;
-    });
-  };
-
-  // Function to get month name
-  const getMonthName = (date) => {
-    return new Date(date).toLocaleString("default", { month: "long" });
-  };
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const hours = Array.from({ length: 11 }, (_, i) => i + 7); // 7 AM to 5 PM
 
   // Navigation functions
   const goToToday = () => {
     setCurrentDate(new Date());
+    setSelectedDate(new Date());
   };
 
   const goToPreviousMonth = () => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(currentDate.getMonth() - 1);
-    setCurrentDate(newDate);
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
 
   const goToNextMonth = () => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(currentDate.getMonth() + 1);
-    setCurrentDate(newDate);
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
-  // Function to get all dates for the current month
-  const getMonthDates = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    // Get the first Monday
-    const start = new Date(firstDay);
-    while (start.getDay() !== 1) {
-      // 1 represents Monday
-      start.setDate(start.getDate() - 1);
-    }
-
-    const dates = [];
-    const current = new Date(start);
-
-    // Add 42 days (6 weeks) to ensure we cover the whole month
-    while (dates.length < 42) {
-      if (current.getDay() !== 0) {
-        // Skip Sundays
-        dates.push(new Date(current));
-      }
-      current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
+  const getMonthName = (date) => {
+    return date.toLocaleString("default", { month: "long" });
   };
 
-  // Update weekDates to use month dates
-  const monthDates = getMonthDates();
-  const weekRows = Array.from({ length: 6 }, (_, i) =>
-    monthDates.slice(i * 7, (i + 1) * 7)
-  );
+  const isToday = (date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+  };
 
-  const weekDates = getWeekDates();
-  const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT"];
-  const hours = Array.from({ length: 11 }, (_, i) => i + 7); // 7 AM to 5 PM
+  const isSelected = (date) => {
+    return date.getDate() === selectedDate.getDate() &&
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getFullYear() === selectedDate.getFullYear();
+  };
 
-  const getAppointmentsForTimeSlot = (date, hour) => {
-    return appointments.filter((apt) => {
-      const aptDate = new Date(apt.start).getDate();
-      const aptHour = new Date(apt.start).getHours();
-      return aptDate === date.getDate() && aptHour === hour;
+  const getAppointmentsForDate = (date) => {
+    return appointments.filter(apt => {
+      const aptDate = new Date(apt.start);
+      return aptDate.getDate() === date.getDate() &&
+        aptDate.getMonth() === date.getMonth() &&
+        aptDate.getFullYear() === date.getFullYear();
     });
   };
+
+  const calendarDays = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
 
   return (
     <AdminLayout>
       <Box
         sx={{
-          px: 3,
-          py: 2,
+          p: { xs: 2, sm: 3, md: 4 },
           width: "100%",
           maxWidth: "100%",
-          overflowX: "hidden",
-          bgcolor: "#fff",
+          bgcolor: "#ffffff",
+          minHeight: "100vh",
+          position: "relative",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "200px",
+            background: "linear-gradient(to right, #8B0000, #6B0000)",
+            zIndex: 0,
+          }
         }}
       >
         {/* Header */}
         <Box
           sx={{
+            position: "relative",
+            zIndex: 1,
             display: "flex",
             alignItems: "center",
-            mb: 3,
-            gap: 2,
+            justifyContent: "space-between",
+            mb: 4,
           }}
         >
-          <IconButton
-            sx={{
-              color: "#8B0000",
-              bgcolor: "rgba(139, 0, 0, 0.1)",
-              "&:hover": {
-                bgcolor: "rgba(139, 0, 0, 0.15)",
-              },
-            }}
-          >
-            <ArrowBack />
-          </IconButton>
-          <Typography
-            variant="h5"
-            sx={{
+          <Typography 
+            variant="h5" 
+            sx={{ 
               fontWeight: 700,
-              color: "#8B0000",
-              fontSize: "1.5rem",
+              color: '#ffffff',
+              fontSize: { xs: "1.5rem", sm: "1.75rem" },
+              textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              letterSpacing: '-0.5px'
             }}
           >
-            Sir Amparo's Appointment Schedule
+            Schedule
           </Typography>
         </Box>
 
-        {/* Controls */}
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            mb: 3,
-            gap: 2,
+        {/* Search and Navigation Controls */}
+        <Box 
+          sx={{ 
+            display: "flex", 
+            gap: 2, 
+            alignItems: 'center', 
+            mb: 4,
             flexWrap: "wrap",
+            position: "relative",
+            zIndex: 1,
+            justifyContent: 'space-between'
           }}
         >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              bgcolor: "white",
-              borderRadius: 2,
-              border: "1px solid #e2e8f0",
-              p: 0.5,
-            }}
-          >
-            <IconButton
-              size="small"
-              sx={{ color: "#8B0000" }}
-              onClick={goToPreviousMonth}
-            >
-              <ChevronLeft />
-            </IconButton>
-            <Typography
-              sx={{
-                mx: 2,
-                color: "#8B0000",
-                fontWeight: 600,
-                minWidth: "100px",
-                textAlign: "center",
-              }}
-            >
-              {getMonthName(currentDate)}
-            </Typography>
-            <IconButton
-              size="small"
-              sx={{ color: "#8B0000" }}
-              onClick={goToNextMonth}
-            >
-              <ChevronRight />
-            </IconButton>
-          </Box>
-
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(e, value) => value && setViewMode(value)}
-            sx={{
-              "& .MuiToggleButton-root": {
-                border: "1px solid #e2e8f0",
-                color: "#64748b",
-                "&.Mui-selected": {
-                  bgcolor: "#8B0000",
-                  color: "white",
-                  "&:hover": {
-                    bgcolor: "#6B0000",
-                  },
-                },
-                "&:hover": {
-                  bgcolor: "rgba(139, 0, 0, 0.04)",
-                },
-              },
-            }}
-          >
-            <ToggleButton value="Day">Day</ToggleButton>
-            <ToggleButton value="Week">Week</ToggleButton>
-            <ToggleButton value="Month">Month</ToggleButton>
-            <ToggleButton value="Year">Year</ToggleButton>
-          </ToggleButtonGroup>
-
+          {/* Left side: Search */}
           <TextField
-            size="small"
             placeholder="Search appointments..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             sx={{
-              minWidth: "300px",
-              flex: 1,
-              maxWidth: "400px",
-              ml: "auto",
-              "& .MuiOutlinedInput-root": {
-                bgcolor: "white",
-                borderRadius: 2,
-                "&:hover fieldset": {
-                  borderColor: "#E2E8F0",
+              flex: { xs: '1 1 100%', sm: '1 1 280px' },
+              maxWidth: { sm: 320 },
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '16px',
+                height: '45px',
+                bgcolor: '#ffffff',
+                border: '1px solid #E2E8F0',
+                '&:hover': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
                 },
-                "&.Mui-focused fieldset": {
-                  borderColor: "#8B0000",
+                '&.Mui-focused': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    border: 'none'
+                  }
                 },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  border: 'none'
+                }
               },
+              '& .MuiInputBase-input': {
+                color: '#1a1f36',
+                '&::placeholder': {
+                  color: '#64748B',
+                  opacity: 1
+                }
+              }
             }}
             InputProps={{
-              startAdornment: <SearchIcon sx={{ color: "#64748b", mr: 1 }} />,
+              startAdornment: (
+                <SearchIcon sx={{ color: "#64748B", ml: 0.5, mr: 1 }} />
+              ),
             }}
           />
+
+          {/* Center: Month Navigation */}
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              gap: 2, 
+              alignItems: 'center',
+              flex: 1,
+              justifyContent: 'center',
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 'auto',
+              zIndex: 2
+            }}
+          >
+            <IconButton
+              onClick={goToPreviousMonth}
+              sx={{
+                color: '#ffffff',
+                p: 1.5,
+                '&:hover': {
+                  bgcolor: 'transparent',
+                },
+              }}
+            >
+              <ChevronLeft sx={{ fontSize: 42 }} />
+            </IconButton>
+
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1.5, 
+              minWidth: '300px', 
+              justifyContent: 'center',
+            }}>
+              <Typography
+                sx={{
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '2rem',
+                  textAlign: 'center',
+                }}
+              >
+                {getMonthName(currentDate)}
+              </Typography>
+              <Typography
+                sx={{
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '2rem',
+                  textAlign: 'center',
+                }}
+              >
+                {currentDate.getFullYear()}
+              </Typography>
+            </Box>
+
+            <IconButton
+              onClick={goToNextMonth}
+              sx={{
+                color: '#ffffff',
+                p: 1.5,
+                '&:hover': {
+                  bgcolor: 'transparent',
+                },
+              }}
+            >
+              <ChevronRight sx={{ fontSize: 42 }} />
+            </IconButton>
+          </Box>
+
+          {/* Right side: Today button and Year selector */}
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1, 
+            alignItems: 'center',
+            ml: 'auto',
+            position: 'relative',
+            zIndex: 1
+          }}>
+            <Button
+              onClick={goToToday}
+              variant="contained"
+              sx={{
+                bgcolor: '#ffffff',
+                color: '#8B0000',
+                borderRadius: '12px',
+                textTransform: 'none',
+                fontWeight: 600,
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.9)',
+                },
+              }}
+            >
+              Today
+            </Button>
+
+            <Button
+              onClick={handleYearClick}
+              sx={{
+                bgcolor: '#ffffff',
+                color: '#8B0000',
+                borderRadius: '12px',
+                textTransform: 'none',
+                fontWeight: 600,
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.9)',
+                },
+                minWidth: '100px',
+                px: 2
+              }}
+              endIcon={<ExpandMore />}
+            >
+              {currentDate.getFullYear()}
+            </Button>
+          </Box>
         </Box>
 
         {/* Calendar Grid */}
         <Paper
+          elevation={0}
           sx={{
-            height: "calc(100vh - 220px)",
-            overflow: "auto",
-            bgcolor: "white",
-            borderRadius: 2,
-            boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
-            transition:
-              "transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out",
-            "&:hover": {
-              transform: "translateY(-2px)",
-              boxShadow: "0 4px 8px rgba(0,0,0,0.08)",
-            },
+            position: "relative",
+            zIndex: 1,
+            borderRadius: '24px',
+            overflow: "hidden",
+            border: '1px solid rgba(226, 232, 240, 0.8)',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.08)',
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 30px 60px rgba(0,0,0,0.12)'
+            }
           }}
         >
-          {/* Days header */}
+          {/* Calendar Header */}
           <Box
             sx={{
               display: "grid",
-              gridTemplateColumns: "80px repeat(6, 1fr)",
-              borderBottom: "1px solid #e2e8f0",
-              position: "sticky",
-              top: 0,
-              bgcolor: "white",
-              zIndex: 1,
+              gridTemplateColumns: "repeat(7, 1fr)",
+              bgcolor: "#f8fafc",
+              borderBottom: "1px solid #E2E8F0",
+              p: 2,
             }}
           >
-            <Box sx={{ p: 2 }} />
-            {days.map((day, index) => (
-              <Box
-                key={index}
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <Typography
+                key={day}
                 sx={{
-                  p: 2,
                   textAlign: "center",
-                  borderLeft: "1px solid #e2e8f0",
+                  color: "#1a1f36",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
                 }}
               >
-                <Typography
-                  sx={{
-                    color: "#1a1f36",
-                    fontSize: "0.875rem",
-                    fontWeight: 600,
-                    mb: 0.5,
-                  }}
-                >
-                  {day}
-                </Typography>
-                <Typography
-                  sx={{
-                    color:
-                      weekDates[index].toDateString() ===
-                      new Date().toDateString()
-                        ? "#8B0000"
-                        : "#1a1f36",
-                    fontSize: "1.125rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  {weekDates[index].getDate()}
-                </Typography>
-              </Box>
+                {day}
+              </Typography>
             ))}
           </Box>
 
-          {/* Time slots */}
-          {hours.map((hour) => (
+          {/* Calendar Days */}
+          <Box sx={{ p: 2 }}>
             <Box
-              key={hour}
               sx={{
                 display: "grid",
-                gridTemplateColumns: "80px repeat(6, 1fr)",
-                borderBottom: "1px solid #e2e8f0",
-                minHeight: "100px",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 1,
               }}
             >
-              <Box
-                sx={{
-                  p: 1.5,
-                  textAlign: "center",
-                  borderRight: "1px solid #e2e8f0",
-                  color: "#1a1f36",
-                  fontSize: "0.875rem",
-                  fontWeight: 600,
-                }}
-              >
-                {`${hour % 12 || 12}:00 ${hour < 12 ? "AM" : "PM"}`}
-              </Box>
-              {weekRows[0].map((date, dateIndex) => {
-                const appointments = getAppointmentsForTimeSlot(date, hour);
+              {getDaysInMonth(
+                currentDate.getFullYear(),
+                currentDate.getMonth()
+              ).map((dayObj, index) => {
+                const date = dayObj.date;
+                const isCurrentMonth = dayObj.isCurrentMonth;
+                const appointments = getAppointmentsForDate(date);
+
                 return (
                   <Box
-                    key={`${dateIndex}-${hour}`}
+                    key={index}
+                    onClick={() => setSelectedDate(date)}
                     sx={{
-                      p: 1,
-                      borderLeft: "1px solid #e2e8f0",
                       position: "relative",
+                      minHeight: "120px",
+                      p: 1,
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "16px",
+                      bgcolor: isSelected(date)
+                        ? "rgba(139, 0, 0, 0.05)"
+                        : isToday(date)
+                        ? "rgba(37, 99, 235, 0.05)"
+                        : "transparent",
                       cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        bgcolor: "rgba(139, 0, 0, 0.05)",
+                        transform: "translateY(-2px)",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+                      },
                     }}
                   >
-                    {appointments.map((apt) => (
-                      <Tooltip
-                        key={apt.id}
-                        title={
-                          <Box sx={{ p: 1 }}>
-                            <Typography
-                              sx={{ fontWeight: 600, mb: 1, color: "white" }}
-                            >
-                              {apt.title} - {apt.group}
-                            </Typography>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                mb: 1,
-                              }}
-                            >
-                              <AccessTime
-                                sx={{ fontSize: 16, mr: 1, color: "white" }}
-                              />
-                              <Typography
-                                variant="body2"
-                                sx={{ color: "white" }}
-                              >
-                                {`${apt.start.getHours() % 12 || 12}:00 ${
-                                  apt.start.getHours() < 12 ? "AM" : "PM"
-                                } - 
-                                  ${apt.end.getHours() % 12 || 12}:00 ${
-                                  apt.end.getHours() < 12 ? "AM" : "PM"
-                                }`}
+                    <Typography
+                      sx={{
+                        textAlign: "center",
+                        color: !isCurrentMonth
+                          ? "#CBD5E1"
+                          : isToday(date)
+                          ? "#2563EB"
+                          : "#1a1f36",
+                        fontWeight: isToday(date) ? 600 : 500,
+                        mb: 1,
+                      }}
+                    >
+                      {date.getDate()}
+                    </Typography>
+
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                      {appointments.slice(0, 2).map((appointment) => (
+                        <Tooltip
+                          key={appointment.id}
+                          title={
+                            <Box>
+                              <Typography variant="subtitle2">
+                                {appointment.title}
+                              </Typography>
+                              <Typography variant="body2">
+                                {appointment.group}
+                              </Typography>
+                              <Typography variant="body2">
+                                {`${appointment.start.toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })} - ${appointment.end.toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}`}
                               </Typography>
                             </Box>
-                            <Box sx={{ display: "flex", alignItems: "center" }}>
-                              <Group
-                                sx={{ fontSize: 16, mr: 1, color: "white" }}
-                              />
-                              <Typography
-                                variant="body2"
-                                sx={{ color: "white" }}
-                              >
-                                {apt.members.join(", ")}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        }
-                        arrow
-                        placement="top"
-                        componentsProps={{
-                          tooltip: {
-                            sx: {
-                              bgcolor:
-                                apt.status === "Confirmed"
-                                  ? "#8B0000"
-                                  : "#D4A017",
-                              "& .MuiTooltip-arrow": {
-                                color:
-                                  apt.status === "Confirmed"
-                                    ? "#8B0000"
-                                    : "#D4A017",
+                          }
+                        >
+                          <Chip
+                            size="small"
+                            label={appointment.group}
+                            sx={{
+                              bgcolor: appointment.status === "Confirmed"
+                                ? "rgba(22, 163, 74, 0.1)"
+                                : "rgba(239, 68, 68, 0.1)",
+                              color: appointment.status === "Confirmed"
+                                ? "#16a34a"
+                                : "#ef4444",
+                              fontWeight: 500,
+                              fontSize: "0.75rem",
+                              width: "100%",
+                              borderRadius: "8px",
+                              '& .MuiChip-label': {
+                                px: 1,
                               },
-                              maxWidth: "none",
-                            },
-                          },
-                        }}
-                      >
-                        <Paper
-                          elevation={0}
+                            }}
+                          />
+                        </Tooltip>
+                      ))}
+                      {appointments.length > 2 && (
+                        <Typography
                           sx={{
-                            p: 1.5,
-                            border: "2px solid",
-                            borderColor:
-                              apt.status === "Confirmed"
-                                ? "#8B0000"
-                                : "#D4A017",
-                            borderRadius: 2,
-                            mb: 1,
-                            cursor: "pointer",
-                            transition: "all 0.2s",
-                            "&:hover": {
-                              transform: "translateY(-2px)",
-                              boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                            },
+                            color: "#64748B",
+                            fontSize: "0.75rem",
+                            textAlign: "center",
                           }}
                         >
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              mb: 1,
-                            }}
-                          >
-                            <Typography
-                              sx={{
-                                fontSize: "1rem",
-                                fontWeight: 700,
-                                color:
-                                  apt.status === "Confirmed"
-                                    ? "#8B0000"
-                                    : "#D4A017",
-                              }}
-                            >
-                              {apt.group}
-                            </Typography>
-                            <Chip
-                              label={apt.status}
-                              size="small"
-                              sx={{
-                                height: 24,
-                                fontSize: "0.8rem",
-                                border: "1px solid",
-                                borderColor:
-                                  apt.status === "Confirmed"
-                                    ? "#8B0000"
-                                    : "#D4A017",
-                                color:
-                                  apt.status === "Confirmed"
-                                    ? "#8B0000"
-                                    : "#D4A017",
-                                bgcolor: "transparent",
-                                fontWeight: 600,
-                                px: 1,
-                                "& .MuiChip-label": {
-                                  px: 1,
-                                },
-                              }}
-                            />
-                          </Box>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 1,
-                            }}
-                          >
-                            <Avatar
-                              sx={{
-                                width: 24,
-                                height: 24,
-                                fontSize: "0.8rem",
-                                bgcolor:
-                                  apt.status === "Confirmed"
-                                    ? "#8B0000"
-                                    : "#D4A017",
-                                color: "white",
-                              }}
-                            >
-                              {apt.members[0]
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </Avatar>
-                            <Typography
-                              sx={{
-                                fontSize: "0.875rem",
-                                color: "#1a1f36",
-                                fontWeight: 500,
-                              }}
-                            >
-                              {apt.members.length} members
-                            </Typography>
-                          </Box>
-                        </Paper>
-                      </Tooltip>
-                    ))}
+                          +{appointments.length - 2} more
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
                 );
               })}
             </Box>
-          ))}
+          </Box>
         </Paper>
+
+        {/* Year Selection Menu */}
+        <Menu
+          anchorEl={yearMenuAnchor}
+          open={Boolean(yearMenuAnchor)}
+          onClose={handleYearClose}
+          PaperProps={{
+            sx: {
+              mt: 1,
+              borderRadius: '16px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+              maxHeight: 300,
+            },
+          }}
+        >
+          {years.map((year) => (
+            <MenuItem
+              key={year}
+              onClick={() => handleYearSelect(year)}
+              sx={{
+                py: 1,
+                px: 2,
+                color: year === currentDate.getFullYear() ? '#8B0000' : '#1a1f36',
+                fontWeight: year === currentDate.getFullYear() ? 600 : 400,
+                '&:hover': {
+                  bgcolor: 'rgba(139, 0, 0, 0.04)',
+                },
+              }}
+            >
+              {year}
+            </MenuItem>
+          ))}
+        </Menu>
       </Box>
     </AdminLayout>
   );
-};
+}
 
 export default Schedule;

@@ -20,6 +20,7 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import GroupIcon from "@mui/icons-material/Group";
 import appointmentService from "../services/appointmentService";
+import userService from "../services/userService";
 import ErrorBoundary from "./ErrorBoundary";
 
 // Mock data for the chart
@@ -278,7 +279,8 @@ const MostBookedFacultySection = () => {
 };
 
 const AdminDashboard = () => {
-  const [timeRange, setTimeRange] = useState("Month");
+  const [activeUsers, setActiveUsers] = useState(0);
+  const [loadingActiveUsers, setLoadingActiveUsers] = useState(true);
   const [appointmentStats, setAppointmentStats] = useState({
     confirmedAppointments: 0,
     completedAppointments: 0,
@@ -286,20 +288,39 @@ const AdminDashboard = () => {
     pendingAppointments: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
-  const [mostBookedFaculty, setMostBookedFaculty] = useState([]);
+  const [facultyData, setFacultyData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [timeRange, setTimeRange] = useState("monthly");
+
+  useEffect(() => {
+    const fetchActiveUsers = async () => {
+      try {
+        setLoadingActiveUsers(true);
+        const count = await userService.getActiveUsersCount();
+        setActiveUsers(count);
+      } catch (err) {
+        console.error("Error fetching active users count:", err);
+        setActiveUsers(0);
+      } finally {
+        setLoadingActiveUsers(false);
+      }
+    };
+
+    fetchActiveUsers();
+  }, []);
 
   useEffect(() => {
     const fetchMostBookedFaculty = async () => {
       try {
         setLoading(true);
         const data = await appointmentService.getMostBookedFaculty();
-        setMostBookedFaculty(data);
+        setFacultyData(data);
         setError(null);
       } catch (err) {
         console.error("Error fetching most booked faculty:", err);
         setError("Failed to load faculty data");
+        setFacultyData([]);
       } finally {
         setLoading(false);
       }
@@ -324,165 +345,116 @@ const AdminDashboard = () => {
     fetchStats();
   }, []);
 
-  // Function to get the appropriate data based on selected time range
-  const getChartData = () => {
-    switch (timeRange) {
-      case "Day":
-        return {
-          data: dailyData,
-          dataKey: "day",
-          title: "Daily Activity",
-        };
-      case "Year":
-        return {
-          data: yearlyData,
-          dataKey: "year",
-          title: "Yearly Activity",
-        };
-      default:
-        return {
-          data: monthlyData,
-          dataKey: "month",
-          title: "Monthly Activity",
-        };
-    }
-  };
-
-  const chartData = getChartData();
-
   return (
     <AdminLayout>
       <Box
         sx={{
-          px: 3,
-          py: 2,
+          p: { xs: 2, sm: 3, md: 4 },
           width: "100%",
           maxWidth: "100%",
-          overflowX: "hidden",
-          bgcolor: "#f8fafc",
+          bgcolor: "#ffffff",
+          minHeight: "100vh"
         }}
       >
-        {/* Header with Timeframe Selector */}
-        <Box
+        {/* Header */}
+        <Typography
+          variant="h5"
           sx={{
-            mb: 3,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            width: "100%",
+            fontWeight: 600,
+            color: "#1a1f36",
+            fontSize: { xs: "1.25rem", sm: "1.5rem" },
+            mb: 4,
           }}
         >
-          <Typography
-            variant="h5"
-            sx={{
-              fontWeight: 700,
-              color: "#1a1f36",
-              fontSize: "1.5rem",
-            }}
-          >
-            Reports Overview
-          </Typography>
-          <Select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            size="small"
-            sx={{
-              minWidth: 180,
-              "& .MuiOutlinedInput-notchedOutline": {
-                borderColor: "#E2E8F0",
-              },
-              "& .MuiSelect-select": {
-                py: 1,
-                bgcolor: "white",
-              },
-            }}
-          >
-            <MenuItem value="Day">Daily View</MenuItem>
-            <MenuItem value="Month">Monthly View</MenuItem>
-            <MenuItem value="Year">Yearly View</MenuItem>
-          </Select>
-        </Box>
+          Reports Overview
+        </Typography>
 
         {/* Stats Grid */}
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={4}>
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <StatsCard
-              icon={<PersonIcon sx={{ fontSize: 24, color: "#8B0000" }} />}
+              icon={<GroupIcon sx={{ fontSize: 24, color: "#8B0000" }} />}
               title="Active Users"
-              value="212"
+              value={activeUsers}
               color="#8B0000"
+              loading={loadingActiveUsers}
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <StatsCard
-              icon={<EventNoteIcon sx={{ fontSize: 24, color: "#8B0000" }} />}
-              title="Total Consultations"
-              value={appointmentStats.confirmedAppointments}
-              color="#8B0000"
-              loading={statsLoading}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <StatsCard
-              icon={
-                <CalendarMonthIcon sx={{ fontSize: 24, color: "#D4A017" }} />
-              }
-              title="Total Slots"
-              value="148"
-              color="#D4A017"
-            />
-          </Grid>
-        </Grid>
-
-        {/* Main Content Grid */}
-        <Grid container spacing={3}>
-          {/* Most Booked Faculty */}
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} sm={6}>
             <Paper
               sx={{
                 p: 3,
                 borderRadius: 2,
-                boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
                 bgcolor: "white",
-                height: "100%",
-                transition: "transform 0.2s ease-in-out",
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                  boxShadow: "0 4px 8px rgba(0,0,0,0.08)",
-                },
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2
               }}
             >
-              <Typography
-                variant="h6"
+              <Box
                 sx={{
-                  fontWeight: 600,
-                  color: "#1a1f36",
-                  mb: 3,
-                  fontSize: "1.125rem",
+                  width: 45,
+                  height: 45,
+                  borderRadius: 2,
+                  bgcolor: '#FFF1F1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
-                Most Booked Faculty
-              </Typography>
-              <ErrorBoundary>
-                <MostBookedFacultySection />
-              </ErrorBoundary>
+                <EventNoteIcon sx={{ fontSize: 24, color: "#8B0000" }} />
+              </Box>
+              <Box>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "#64748b",
+                    fontSize: "0.875rem",
+                    mb: 0.5
+                  }}
+                >
+                  Total Consultations
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 600,
+                    color: "#1a1f36",
+                    fontSize: "2rem"
+                  }}
+                >
+                  {appointmentStats.confirmedAppointments || 15}
+                </Typography>
+              </Box>
             </Paper>
           </Grid>
+        </Grid>
 
+        {/* Dashboard Analytics Section */}
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 600,
+            color: "#1a1f36",
+            fontSize: "1.25rem",
+            mb: 3
+          }}
+        >
+          Dashboard Analytics
+        </Typography>
+
+        {/* Main Content Grid */}
+        <Grid container spacing={3}>
           {/* Activity Chart */}
-          <Grid item xs={12} md={9}>
+          <Grid item xs={12} md={6}>
             <Paper
               sx={{
-                p: 4,
-                borderRadius: 3,
-                boxShadow: "0 2px 12px rgba(0,0,0,0.03)",
+                p: { xs: 3, md: 4 },
+                borderRadius: 2,
                 bgcolor: "white",
-                height: "100%",
-                transition: "transform 0.2s ease-in-out",
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-                },
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                height: "100%"
               }}
             >
               <Box
@@ -498,267 +470,81 @@ const AdminDashboard = () => {
                   sx={{
                     fontWeight: 600,
                     color: "#1a1f36",
-                    fontSize: "1.125rem",
+                    fontSize: "1rem",
                   }}
                 >
-                  Activity
+                  Most Booked Faculty
                 </Typography>
-                <Select
-                  value={timeRange}
-                  onChange={(e) => setTimeRange(e.target.value)}
-                  size="small"
-                  sx={{
-                    minWidth: 100,
-                    "& .MuiOutlinedInput-notchedOutline": {
-                      borderColor: "#E2E8F0",
-                    },
-                    "& .MuiSelect-select": {
-                      py: 0.5,
-                      pr: 3,
-                      pl: 1.5,
-                      fontSize: "0.875rem",
-                      color: "#64748B",
-                    },
-                    "&:hover .MuiOutlinedInput-notchedOutline": {
-                      borderColor: "#8B0000",
-                    },
-                    "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                      borderColor: "#8B0000",
-                    },
-                  }}
-                >
-                  <MenuItem value="Month">Month</MenuItem>
-                  <MenuItem value="Day">Day</MenuItem>
-                  <MenuItem value="Year">Year</MenuItem>
-                </Select>
               </Box>
               <Box
                 sx={{
-                  height: 350,
+                  height: 400,
                   width: "100%",
-                  "& .MuiChartsAxis-root": {
-                    transform: "scale(0.9)",
-                  },
                 }}
               >
-                <BarChart
-                  dataset={chartData.data}
-                  yAxis={[
-                    {
-                      scaleType: "linear",
-                      tickMinStep: 100,
-                      tickSize: 0,
-                      gridLineStyle: {
-                        stroke: "#f1f5f9",
-                        strokeWidth: 1,
-                      },
-                    },
-                  ]}
-                  series={[
-                    {
-                      dataKey: "value",
-                      label: "Consultations",
-                      color: "#8B0000",
-                      valueFormatter: (value) => value.toString(),
-                      highlightScope: {
-                        highlighted: "item",
-                        faded: "global",
-                      },
-                    },
-                  ]}
-                  xAxis={[
-                    {
-                      dataKey: chartData.dataKey,
-                      scaleType: "band",
-                      tickSize: 0,
-                    },
-                  ]}
-                  height={350}
-                  margin={{
-                    left: 40,
-                    right: 40,
-                    top: 20,
-                    bottom: 30,
-                  }}
-                  sx={{
-                    ".MuiChartsAxis-line": { display: "none" },
-                    ".MuiChartsAxis-tick": { display: "none" },
-                    ".MuiChartsAxis-tickLabel": {
-                      fill: "#64748B",
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                    },
-                    ".MuiBarElement-root": {
-                      opacity: 0.85,
-                      "&:hover": {
-                        opacity: 1,
-                        filter: "brightness(0.9)",
-                      },
-                    },
-                    ".MuiChartsLegend-root": {
-                      display: "none",
-                    },
-                  }}
-                  tooltip={{
-                    trigger: "item",
-                  }}
-                  slotProps={{
-                    bar: {
-                      rx: 4,
-                      ry: 4,
-                    },
-                  }}
-                />
-              </Box>
-            </Paper>
-          </Grid>
-
-          {/* Recent Activities */}
-          <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 3,
-                borderRadius: 2,
-                boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
-                bgcolor: "white",
-                transition: "transform 0.2s ease-in-out",
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                  boxShadow: "0 4px 8px rgba(0,0,0,0.08)",
-                },
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  fontWeight: 600,
-                  color: "#1a1f36",
-                  mb: 3,
-                  fontSize: "1.125rem",
-                }}
-              >
-                Recent Activities
-              </Typography>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {recentActivities.map((activity) => (
-                  <Paper
-                    key={activity.id}
-                    elevation={0}
+                {loading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <CircularProgress sx={{ color: '#8B0000' }} />
+                  </Box>
+                ) : error ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'error.main' }}>
+                    <Typography>{error}</Typography>
+                  </Box>
+                ) : (
+                  <BarChart
+                    dataset={facultyData}
+                    xAxis={[
+                      {
+                        dataKey: "name",
+                        scaleType: "band",
+                      }
+                    ]}
+                    series={[
+                      {
+                        dataKey: "bookingCount",
+                        label: "Total Bookings",
+                        valueFormatter: (value) => value.toString(),
+                        color: "#8B0000"
+                      }
+                    ]}
+                    height={400}
                     sx={{
-                      p: 2,
-                      borderRadius: 2,
-                      bgcolor: "#f8fafc",
-                      transition: "all 0.2s ease-in-out",
-                      "&:hover": {
-                        transform: "translateX(4px)",
-                        bgcolor: "#f1f5f9",
+                      ".MuiChartsAxis-bottom .MuiChartsAxis-tickLabel": {
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                        transform: "rotate(-45deg)",
+                        transformOrigin: "top left"
+                      },
+                      ".MuiBarElement-root": {
+                        opacity: 0.8,
+                        "&:hover": {
+                          opacity: 1,
+                        },
                       },
                     }}
-                  >
-                    <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                      <Avatar
-                        sx={{
-                          width: 40,
-                          height: 40,
-                          bgcolor: "#8B0000",
-                          fontSize: "1rem",
-                          mr: 2,
-                        }}
-                      >
-                        {activity.student
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
-                      </Avatar>
-                      <Box sx={{ flexGrow: 1 }}>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <Typography
-                            variant="subtitle1"
-                            sx={{
-                              color: "#1a1f36",
-                              fontWeight: 600,
-                              fontSize: "0.9375rem",
-                            }}
-                          >
-                            {activity.student}
-                          </Typography>
-                          <Chip
-                            label={activity.status}
-                            size="small"
-                            sx={{
-                              bgcolor:
-                                activity.status === "Upcoming"
-                                  ? "rgba(139, 0, 0, 0.1)"
-                                  : "rgba(212, 160, 23, 0.1)",
-                              color:
-                                activity.status === "Upcoming"
-                                  ? "#8B0000"
-                                  : "#D4A017",
-                              fontWeight: 500,
-                              fontSize: "0.75rem",
-                              height: 24,
-                            }}
-                          />
-                        </Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: "#64748b",
-                            fontSize: "0.875rem",
-                          }}
-                        >
-                          {activity.type} with {activity.faculty}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 3,
-                        color: "#64748b",
-                        fontSize: "0.8125rem",
-                        pl: 7,
-                      }}
-                    >
-                      <Box
-                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                      >
-                        <AccessTimeIcon sx={{ fontSize: 16 }} />
-                        {activity.time}
-                      </Box>
-                      <Box
-                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                      >
-                        <CalendarMonthIcon sx={{ fontSize: 16 }} />
-                        {activity.date}
-                      </Box>
-                    </Box>
-                  </Paper>
-                ))}
+                    slotProps={{
+                      legend: {
+                        hidden: true
+                      }
+                    }}
+                  />
+                )}
               </Box>
             </Paper>
           </Grid>
 
           {/* Calendar */}
-          <Grid item xs={12}>
+          <Grid item xs={12} md={6}>
             <Paper
               sx={{
-                p: 3,
+                p: { xs: 3, md: 4 },
                 borderRadius: 2,
-                boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
                 bgcolor: "white",
-                transition: "transform 0.2s ease-in-out",
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                  boxShadow: "0 4px 8px rgba(0,0,0,0.08)",
-                },
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                height: "100%",
+                "& .fc": {
+                  height: "500px !important"
+                }
               }}
             >
               <Calendar />
