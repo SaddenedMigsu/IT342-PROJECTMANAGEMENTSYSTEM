@@ -51,6 +51,9 @@ public class Appointment {
     @JsonProperty("hasApproved")
     private Boolean hasApproved; // For faculty members to track their approval status
 
+    @JsonProperty("facultyName")
+    private String facultyName; // To store faculty name for appointments
+
     public Appointment() {
     }
 
@@ -214,5 +217,15 @@ public class Appointment {
     @JsonProperty("hasApproved")
     public void setHasApproved(Boolean hasApproved) {
         this.hasApproved = hasApproved;
+    }
+
+    @JsonProperty("facultyName")
+    public String getFacultyName() {
+        return facultyName;
+    }
+
+    @JsonProperty("facultyName")
+    public void setFacultyName(String facultyName) {
+        this.facultyName = facultyName;
     }
 } 
