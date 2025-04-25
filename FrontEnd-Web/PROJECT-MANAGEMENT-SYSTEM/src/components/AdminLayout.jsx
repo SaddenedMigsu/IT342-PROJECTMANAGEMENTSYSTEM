@@ -9,6 +9,7 @@ import {
   Logout,
 } from "@mui/icons-material";
 import pmsLogo from "../assets/pms-logo.png";
+import userService from "../services/userService";
 
 const AdminLayout = ({ children }) => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const AdminLayout = ({ children }) => {
     firstName: "",
     lastName: "",
     email: "",
+    profilePicture: null,
   });
 
   // Function to check if menu item is active
@@ -56,27 +58,65 @@ const AdminLayout = ({ children }) => {
   });
 
   useEffect(() => {
-    const fetchUserProfile = () => {
+    const fetchUserProfile = async () => {
       try {
         const token = localStorage.getItem("token");
         if (!token) {
-          navigate("/admin/dashboard");
+          navigate("/login");
           return;
         }
 
-        const userData = JSON.parse(localStorage.getItem("user") || "{}");
-        setUserProfile({
-          firstName: userData.firstName || "",
-          lastName: userData.lastName || "",
-          email: userData.email || "",
-        });
+        // Try to get cached user data first
+        const cachedUserData = localStorage.getItem("user");
+        let initialData = null;
+        
+        if (cachedUserData) {
+          try {
+            initialData = JSON.parse(cachedUserData);
+            setUserProfile({
+              firstName: initialData.firstName || "",
+              lastName: initialData.lastName || "",
+              email: initialData.email || "",
+              profilePicture: initialData.profilePicture || null,
+            });
+          } catch (e) {
+            console.error("Error parsing cached user data:", e);
+            localStorage.removeItem("user");
+          }
+        }
+
+        // Fetch fresh data from API
+        const userData = await userService.getCurrentProfile();
+        if (userData) {
+          const newUserData = {
+            firstName: userData.firstName || "",
+            lastName: userData.lastName || "",
+            email: userData.email || "",
+            profilePicture: userData.profilePicture || null,
+          };
+          
+          setUserProfile(newUserData);
+          localStorage.setItem("user", JSON.stringify(newUserData));
+        }
       } catch (error) {
         console.error("Error fetching user profile:", error);
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          navigate("/login");
+        }
       }
     };
 
     const handleProfileUpdate = (event) => {
-      setUserProfile(event.detail);
+      if (event.detail) {
+        setUserProfile({
+          firstName: event.detail.firstName || "",
+          lastName: event.detail.lastName || "",
+          email: event.detail.email || "",
+          profilePicture: event.detail.profilePicture || null,
+        });
+      }
     };
 
     // Initial profile fetch
@@ -194,26 +234,6 @@ const AdminLayout = ({ children }) => {
           <Typography sx={getTextStyles("/admin/profile")}>
             My Account
           </Typography>
-          <Box sx={{ ml: "auto" }}>
-            <Typography
-              sx={{
-                fontSize: "0.75rem",
-                color: "#64748B",
-                textAlign: "right",
-              }}
-            >
-              {userProfile.firstName} {userProfile.lastName}
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.75rem",
-                color: "#64748B",
-                textAlign: "right",
-              }}
-            >
-              {userProfile.email}
-            </Typography>
-          </Box>
         </Box>
 
         {/* User Profile */}
@@ -221,7 +241,7 @@ const AdminLayout = ({ children }) => {
           <Box
             sx={{
               display: "flex",
-              alignItems: "flex-start",
+              alignItems: "center",
               px: 1.5,
               py: 1,
               cursor: "pointer",
@@ -232,19 +252,24 @@ const AdminLayout = ({ children }) => {
             }}
             onClick={() => navigate("/admin/profile")}
           >
-            <Person
+            <Avatar
+              src={userProfile.profilePicture}
+              alt={`${userProfile.firstName} ${userProfile.lastName}`}
               sx={{
-                fontSize: 16,
-                mt: 0.5,
-                mr: 1.5,
-                color: "#64748B",
+                width: 40,
+                height: 40,
+                mr: 2,
+                bgcolor: userProfile.profilePicture ? 'transparent' : '#8B0000',
               }}
-            />
+            >
+              {!userProfile.profilePicture && userProfile.firstName && userProfile.lastName ? 
+                `${userProfile.firstName[0]}${userProfile.lastName[0]}` : ""}
+            </Avatar>
             <Box>
               <Typography
                 sx={{
                   fontSize: "0.875rem",
-                  fontWeight: 400,
+                  fontWeight: 500,
                   color: "#1a1f36",
                   lineHeight: 1.2,
                 }}

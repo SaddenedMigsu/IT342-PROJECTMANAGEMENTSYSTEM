@@ -21,6 +21,7 @@ import {
   DialogActions,
   FormControl,
   InputLabel,
+  Checkbox,
 } from "@mui/material";
 import { Search, MoreVert, Delete } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
@@ -56,7 +57,7 @@ const Users = () => {
   const [users, setUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("Newest");
-  const [selectedRole, setSelectedRole] = useState("All");
+  const [selectedRoles, setSelectedRoles] = useState(["All"]);
   const [page, setPage] = useState(1);
   const [rowsPerPage] = useState(8);
   const [loading, setLoading] = useState(true);
@@ -72,6 +73,10 @@ const Users = () => {
       try {
         setLoading(true);
         const data = await userService.getAllUsers();
+        
+        // Debug log for raw user data
+        console.log('Raw user data from backend:', data);
+        console.log('Sample user profile picture data:', data[0]?.profilePicture);
 
         // Transform the data to match our component's structure
         const transformedUsers = data.map((user) => ({
@@ -79,9 +84,17 @@ const Users = () => {
           name: `${user.firstName} ${user.lastName}`,
           role: user.role,
           email: user.email,
-          status: "Active", // Default status since backend doesn't provide it
+          status: "Active",
           createdAt: user.createdAt,
+          profilePicture: user.profilePicture ? `http://localhost:8080${user.profilePicture}` : null
         }));
+
+        // Log transformed users
+        console.log('Transformed users with profile pictures:', transformedUsers.map(u => ({ 
+          id: u.id, 
+          name: u.name, 
+          profilePicture: u.profilePicture 
+        })));
 
         // Extract unique roles from users
         const roles = [...new Set(transformedUsers.map((user) => user.role))];
@@ -100,10 +113,10 @@ const Users = () => {
     fetchUsers();
   }, []);
 
-  // Reset page when search query or role changes
+  // Reset page when search query or roles change
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, selectedRole]);
+  }, [searchQuery, selectedRoles]);
 
   const handleSearchChange = (event) => {
     setSearchQuery(event.target.value);
@@ -113,8 +126,18 @@ const Users = () => {
     setSortBy(event.target.value);
   };
 
-  const handleRoleChange = (event) => {
-    setSelectedRole(event.target.value);
+  const handleRoleChange = (role) => {
+    setSelectedRoles((prev) => {
+      if (role === "All") {
+        return ["All"];
+      }
+      
+      const newRoles = prev.includes(role)
+        ? prev.filter((r) => r !== role)
+        : [...prev.filter((r) => r !== "All"), role];
+      
+      return newRoles.length === 0 ? ["All"] : newRoles;
+    });
   };
 
   const handlePageChange = (event, newPage) => {
@@ -161,24 +184,51 @@ const Users = () => {
     }
 
     // Apply role filter
-    if (selectedRole !== "All") {
-      filtered = filtered.filter((user) => user.role === selectedRole);
+    if (!selectedRoles.includes("All")) {
+      filtered = filtered.filter((user) => selectedRoles.includes(user.role));
     }
 
-    // Apply sorting
-    return filtered.sort((a, b) => {
-      switch (sortBy) {
-        case "Newest":
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        case "Oldest":
-          return new Date(a.createdAt) - new Date(b.createdAt);
-        case "Name":
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
+    // Create a new array for sorting to avoid mutating the original
+    const sortedUsers = [...filtered];
+
+    // Log users before sorting
+    console.log('Users before sorting:', sortBy, sortedUsers.slice(0, 3).map(user => ({
+      name: user.name,
+      createdAt: user.createdAt,
+      parsedDate: new Date(user.createdAt)
+    })));
+
+    // Apply sorting with proper date parsing
+    sortedUsers.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+
+      // Log comparison if dates are invalid
+      if (isNaN(dateA) || isNaN(dateB)) {
+        console.log('Invalid date found:', {
+          userA: { name: a.name, createdAt: a.createdAt, parsed: new Date(a.createdAt) },
+          userB: { name: b.name, createdAt: b.createdAt, parsed: new Date(b.createdAt) }
+        });
+        return 0;
       }
+
+      return sortBy === "Newest" ? dateB - dateA : dateA - dateB;
     });
+
+    // Log users after sorting
+    console.log('Users after sorting:', sortBy, sortedUsers.slice(0, 3).map(user => ({
+      name: user.name,
+      createdAt: user.createdAt,
+      parsedDate: new Date(user.createdAt)
+    })));
+
+    return sortedUsers;
   };
+
+  // Add effect to log when sort changes
+  useEffect(() => {
+    console.log('Sort changed to:', sortBy);
+  }, [sortBy]);
 
   const filteredAndSortedUsers = getFilteredAndSortedUsers();
   const totalPages = Math.ceil(filteredAndSortedUsers.length / rowsPerPage);
@@ -203,15 +253,28 @@ const Users = () => {
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <Avatar
+          src={user.profilePicture}
+          alt={user.name}
+          imgProps={{
+            crossOrigin: "anonymous",
+            referrerPolicy: "no-referrer"
+          }}
           sx={{
-            width: 32,
-            height: 32,
-            bgcolor: getAvatarColor(user.name),
-            fontSize: "0.875rem",
+            width: 40,
+            height: 40,
+            bgcolor: user.profilePicture ? 'transparent' : getAvatarColor(user.name),
+            fontSize: "1rem",
             fontWeight: 600,
+            border: '2px solid white',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            '& img': {
+              objectFit: 'cover',
+              width: '100%',
+              height: '100%'
+            }
           }}
         >
-          {user.name
+          {!user.profilePicture && user.name
             .split(" ")
             .map((n) => n[0])
             .join("")}
@@ -259,29 +322,42 @@ const Users = () => {
     <AdminLayout>
       <Box
         sx={{
-          px: 3,
-          py: 2,
+          p: { xs: 2, sm: 3, md: 4 },
           width: "100%",
           maxWidth: "100%",
-          overflowX: "hidden",
-          bgcolor: "#f8fafc",
+          bgcolor: "#ffffff",
+          minHeight: "100vh",
+          position: "relative",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "200px",
+            background: "linear-gradient(to right, #8B0000, #6B0000)",
+            zIndex: 0,
+          }
         }}
       >
         {/* Header */}
         <Box
           sx={{
-            mb: 4,
+            position: "relative",
+            zIndex: 1,
             display: "flex",
-            justifyContent: "space-between",
             alignItems: "center",
+            mb: 4,
           }}
         >
-          <Typography
-            variant="h5"
-            sx={{
+          <Typography 
+            variant="h5" 
+            sx={{ 
               fontWeight: 700,
-              color: "#1a1f36",
-              fontSize: "1.5rem",
+              color: '#ffffff',
+              fontSize: { xs: "1.5rem", sm: "1.75rem" },
+              textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              letterSpacing: '-0.5px'
             }}
           >
             Users
@@ -289,12 +365,15 @@ const Users = () => {
         </Box>
 
         {/* Search and Filter Section */}
-        <Box
-          sx={{
-            mb: 3,
-            display: "flex",
-            gap: 2,
-            alignItems: "center",
+        <Box 
+          sx={{ 
+            display: "flex", 
+            gap: 2, 
+            alignItems: 'center', 
+            mb: 4,
+            flexWrap: "wrap",
+            position: "relative",
+            zIndex: 1
           }}
         >
           <TextField
@@ -302,108 +381,278 @@ const Users = () => {
             value={searchQuery}
             onChange={handleSearchChange}
             sx={{
-              flex: 1,
-              maxWidth: 300,
-              bgcolor: "white",
-              "& .MuiOutlinedInput-root": {
-                "& fieldset": {
-                  borderColor: "#E2E8F0",
+              flex: { xs: '1 1 100%', sm: '1 1 280px' },
+              maxWidth: { sm: 320 },
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '16px',
+                height: '45px',
+                transition: 'all 0.2s',
+                bgcolor: '#ffffff',
+                border: '1px solid #E2E8F0',
+                '&:hover': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
                 },
-                "&:hover fieldset": {
-                  borderColor: "#8B0000",
+                '&.Mui-focused': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    border: 'none'
+                  }
                 },
-                "&.Mui-focused fieldset": {
-                  borderColor: "#8B0000",
-                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  border: 'none'
+                }
               },
+              '& .MuiInputBase-input': {
+                color: '#1a1f36',
+                '&::placeholder': {
+                  color: '#64748B',
+                  opacity: 1
+                }
+              }
             }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <Search sx={{ color: "#64748B" }} />
+                  <Search sx={{ color: "#64748B", ml: 0.5 }} />
                 </InputAdornment>
               ),
             }}
           />
 
-          <FormControl sx={{ minWidth: 150 }}>
-            <InputLabel id="role-filter-label" sx={{ color: "#64748B" }}>
-              Filter by Role
-            </InputLabel>
+          <FormControl sx={{ minWidth: 220, flex: { xs: '1 1 100%', sm: 'initial' } }}>
             <Select
-              labelId="role-filter-label"
-              value={selectedRole}
-              label="Filter by Role"
-              onChange={handleRoleChange}
+              displayEmpty
+              value={selectedRoles}
+              multiple
+              renderValue={(selected) => (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {selected.length === 1 && selected[0] === "All" ? (
+                    <Typography sx={{ color: '#64748B' }}>All Roles</Typography>
+                  ) : (
+                    selected.map((role) => (
+                      <Chip
+                        key={role}
+                        label={role}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(139, 0, 0, 0.08)',
+                          color: '#8B0000',
+                          fontWeight: 500,
+                          borderRadius: '8px',
+                          '&:hover': {
+                            bgcolor: 'rgba(139, 0, 0, 0.12)',
+                          },
+                        }}
+                      />
+                    ))
+                  )}
+                </Box>
+              )}
               sx={{
-                bgcolor: "white",
-                "& .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#E2E8F0",
+                height: '45px',
+                borderRadius: '16px',
+                bgcolor: '#ffffff',
+                border: '1px solid #E2E8F0',
+                '&:hover': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
                 },
-                "&:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#8B0000",
+                '&.Mui-focused': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
                 },
-                "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#8B0000",
+                '& .MuiOutlinedInput-notchedOutline': {
+                  border: 'none'
+                },
+                '& .MuiSelect-select': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  padding: '8px 14px',
+                  color: '#1a1f36',
+                },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    maxHeight: 300,
+                    mt: 1,
+                    borderRadius: '16px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                    '& .MuiMenuItem-root': {
+                      py: 1.2,
+                      px: 2,
+                    },
+                  },
                 },
               }}
             >
               {availableRoles.map((role) => (
-                <MenuItem key={role} value={role}>
-                  {role}
+                <MenuItem 
+                  key={role} 
+                  value={role}
+                  onClick={() => handleRoleChange(role)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    borderRadius: '8px',
+                    mx: 0.8,
+                    my: 0.3,
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.08)',
+                    },
+                    '&.Mui-selected:hover': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.12)',
+                    },
+                    '&:hover': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.04)',
+                    },
+                  }}
+                >
+                  <Checkbox 
+                    checked={selectedRoles.includes(role)}
+                    sx={{
+                      color: '#8B0000',
+                      borderRadius: '6px',
+                      '&.Mui-checked': {
+                        color: '#8B0000',
+                      },
+                      '& .MuiSvgIcon-root': {
+                        fontSize: 20,
+                      },
+                    }}
+                  />
+                  <Typography
+                    sx={{
+                      fontWeight: selectedRoles.includes(role) ? 600 : 400,
+                      color: selectedRoles.includes(role) ? '#8B0000' : '#1a1f36',
+                    }}
+                  >
+                    {role}
+                  </Typography>
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
 
-          <FormControl sx={{ minWidth: 150 }}>
-            <InputLabel id="sort-by-label" sx={{ color: "#64748B" }}>
-              Sort by
-            </InputLabel>
+          <FormControl sx={{ minWidth: 180, flex: { xs: '1 1 100%', sm: 'initial' } }}>
             <Select
-              labelId="sort-by-label"
               value={sortBy}
-              label="Sort by"
-              onChange={handleSortChange}
+              displayEmpty
+              renderValue={(value) => (
+                <Typography sx={{ color: value ? '#1a1f36' : '#64748B' }}>
+                  {value || "Sort by"}
+                </Typography>
+              )}
               sx={{
-                bgcolor: "white",
-                "& .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#E2E8F0",
+                height: '45px',
+                borderRadius: '16px',
+                bgcolor: '#ffffff',
+                border: '1px solid #E2E8F0',
+                '&:hover': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
                 },
-                "&:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#8B0000",
+                '&.Mui-focused': {
+                  borderColor: '#8B0000',
+                  bgcolor: '#ffffff',
                 },
-                "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#8B0000",
+                '& .MuiOutlinedInput-notchedOutline': {
+                  border: 'none'
+                },
+                '& .MuiSelect-select': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  padding: '8px 14px',
+                },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    mt: 1,
+                    borderRadius: '16px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                  },
                 },
               }}
             >
-              <MenuItem value="Newest">Newest</MenuItem>
-              <MenuItem value="Oldest">Oldest</MenuItem>
-              <MenuItem value="Name">Name</MenuItem>
+              {[
+                { value: "Newest", label: "Newest" },
+                { value: "Oldest", label: "Oldest" }
+              ].map((option) => (
+                <MenuItem
+                  key={option.value}
+                  value={option.value}
+                  sx={{
+                    fontSize: '0.875rem',
+                    py: 1.2,
+                    px: 2,
+                    borderRadius: '8px',
+                    mx: 0.8,
+                    my: 0.3,
+                    fontWeight: sortBy === option.value ? 600 : 400,
+                    color: sortBy === option.value ? '#8B0000' : '#1a1f36',
+                    '&:hover': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.04)',
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.08)',
+                      color: '#8B0000',
+                      fontWeight: 600,
+                      '&:hover': {
+                        backgroundColor: 'rgba(139, 0, 0, 0.12)',
+                      },
+                    },
+                  }}
+                >
+                  {option.label}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Box>
 
         {/* Error message */}
         {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
+          <Alert 
+            severity="error" 
+            sx={{ 
+              mb: 3,
+              borderRadius: '16px',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              bgcolor: 'rgba(239, 68, 68, 0.05)',
+              position: "relative",
+              zIndex: 1,
+              '& .MuiAlert-icon': {
+                color: '#ef4444'
+              }
+            }}
+          >
             {error}
           </Alert>
         )}
 
         {/* Users Table */}
         <Paper
+          elevation={0}
           sx={{
-            borderRadius: 2,
-            boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+            position: "relative",
+            zIndex: 1,
+            borderRadius: '24px',
             overflow: "hidden",
-            transition:
-              "transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out",
-            "&:hover": {
-              transform: "translateY(-2px)",
-              boxShadow: "0 4px 8px rgba(0,0,0,0.08)",
-            },
+            border: '1px solid rgba(226, 232, 240, 0.8)',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.08)',
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 30px 60px rgba(0,0,0,0.12)'
+            }
           }}
         >
           {/* Table Header */}
@@ -412,32 +661,32 @@ const Users = () => {
               display: "grid",
               gridTemplateColumns: "2.5fr 1fr 2fr 1fr 1fr",
               borderBottom: "1px solid #E2E8F0",
-              bgcolor: "#F8FAFC",
+              bgcolor: "#f8fafc",
               p: 2,
             }}
           >
             <Typography
-              sx={{ color: "#64748B", fontWeight: 600, fontSize: "0.875rem" }}
+              sx={{ color: "#1a1f36", fontWeight: 600, fontSize: "0.875rem" }}
             >
               Name
             </Typography>
             <Typography
-              sx={{ color: "#64748B", fontWeight: 600, fontSize: "0.875rem" }}
+              sx={{ color: "#1a1f36", fontWeight: 600, fontSize: "0.875rem" }}
             >
               Role
             </Typography>
             <Typography
-              sx={{ color: "#64748B", fontWeight: 600, fontSize: "0.875rem" }}
+              sx={{ color: "#1a1f36", fontWeight: 600, fontSize: "0.875rem" }}
             >
               Email
             </Typography>
             <Typography
-              sx={{ color: "#64748B", fontWeight: 600, fontSize: "0.875rem" }}
+              sx={{ color: "#1a1f36", fontWeight: 600, fontSize: "0.875rem" }}
             >
               Status
             </Typography>
             <Typography
-              sx={{ color: "#64748B", fontWeight: 600, fontSize: "0.875rem" }}
+              sx={{ color: "#1a1f36", fontWeight: 600, fontSize: "0.875rem" }}
             >
               Action
             </Typography>
@@ -449,7 +698,103 @@ const Users = () => {
               <CircularProgress sx={{ color: "#8B0000" }} />
             </Box>
           ) : displayedUsers.length > 0 ? (
-            displayedUsers.map(renderUserRow)
+            displayedUsers.map((user) => (
+              <Box
+                key={user.id}
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "2.5fr 1fr 2fr 1fr 1fr",
+                  borderBottom: "1px solid #E2E8F0",
+                  p: 2,
+                  bgcolor: "white",
+                  transition: "all 0.2s ease",
+                  "&:hover": { 
+                    bgcolor: "#f8fafc",
+                    transform: 'translateX(4px)'
+                  },
+                  "&:last-child": { borderBottom: "none" },
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Avatar
+                    src={user.profilePicture}
+                    alt={user.name}
+                    imgProps={{
+                      crossOrigin: "anonymous",
+                      referrerPolicy: "no-referrer"
+                    }}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      bgcolor: user.profilePicture ? 'transparent' : getAvatarColor(user.name),
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                      border: '2px solid white',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      '& img': {
+                        objectFit: 'cover',
+                        width: '100%',
+                        height: '100%'
+                      }
+                    }}
+                  >
+                    {!user.profilePicture && user.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")}
+                  </Avatar>
+                  <Typography
+                    sx={{ 
+                      color: "#1a1f36", 
+                      fontSize: "0.875rem", 
+                      fontWeight: 500,
+                      transition: 'color 0.2s ease',
+                      '&:hover': {
+                        color: '#8B0000'
+                      }
+                    }}
+                  >
+                    {user.name}
+                  </Typography>
+                </Box>
+                <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
+                  {user.role}
+                </Typography>
+                <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
+                  {user.email}
+                </Typography>
+                <Box>
+                  <Chip
+                    label={user.status}
+                    size="small"
+                    sx={{
+                      bgcolor: user.status === "Active" ? "rgba(22, 163, 74, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                      color: user.status === "Active" ? "#16a34a" : "#ef4444",
+                      fontWeight: 600,
+                      fontSize: "0.75rem",
+                      borderRadius: '8px',
+                      border: `1px solid ${user.status === "Active" ? "rgba(22, 163, 74, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleDeleteClick(user)}
+                    sx={{
+                      color: "#8B0000",
+                      transition: 'all 0.2s ease',
+                      "&:hover": { 
+                        bgcolor: "rgba(139, 0, 0, 0.1)",
+                        transform: 'scale(1.1)'
+                      },
+                    }}
+                  >
+                    <Delete sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </Box>
+              </Box>
+            ))
           ) : (
             <Box sx={{ p: 3, textAlign: "center" }}>
               <Typography sx={{ color: "#64748B" }}>
@@ -470,14 +815,13 @@ const Users = () => {
               justifyContent: "space-between",
               alignItems: "center",
               px: 1,
+              position: "relative",
+              zIndex: 1,
             }}
           >
             <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
               Showing {startIndex + 1} to{" "}
-              {Math.min(
-                startIndex + rowsPerPage,
-                filteredAndSortedUsers.length
-              )}{" "}
+              {Math.min(startIndex + rowsPerPage, filteredAndSortedUsers.length)}{" "}
               of {filteredAndSortedUsers.length} entries
             </Typography>
             <Stack spacing={2}>
@@ -489,17 +833,18 @@ const Users = () => {
                 showFirstButton
                 showLastButton
                 sx={{
-                  "& .MuiPaginationItem-root": {
+                  '& .MuiPaginationItem-root': {
                     color: "#64748B",
-                    borderRadius: 1,
-                    "&.Mui-selected": {
+                    borderRadius: '8px',
+                    transition: 'all 0.2s ease',
+                    '&.Mui-selected': {
                       bgcolor: "#8B0000",
                       color: "white",
-                      "&:hover": {
+                      '&:hover': {
                         bgcolor: "#6B0000",
                       },
                     },
-                    "&:hover": {
+                    '&:hover': {
                       bgcolor: "rgba(139, 0, 0, 0.1)",
                     },
                   },
@@ -514,26 +859,72 @@ const Users = () => {
       <Dialog
         open={deleteDialogOpen}
         onClose={handleDeleteCancel}
-        aria-labelledby="delete-dialog-title"
+        PaperProps={{
+          sx: {
+            borderRadius: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: 2
+          }
+        }}
       >
-        <DialogTitle id="delete-dialog-title">Delete User</DialogTitle>
+        <DialogTitle 
+          sx={{
+            fontSize: '1.25rem',
+            fontWeight: 600,
+            color: '#1a1f36',
+            pb: 1
+          }}
+        >
+          Delete User
+        </DialogTitle>
         <DialogContent>
-          <Typography>
+          <Typography sx={{ color: '#64748B', mb: 2 }}>
             Are you sure you want to delete {userToDelete?.name}? This action
             cannot be undone.
           </Typography>
           {deleteError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mt: 2,
+                borderRadius: '16px',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                bgcolor: 'rgba(239, 68, 68, 0.05)',
+              }}
+            >
               {deleteError}
             </Alert>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDeleteCancel}>Cancel</Button>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button 
+            onClick={handleDeleteCancel}
+            sx={{
+              color: '#64748B',
+              '&:hover': {
+                bgcolor: 'rgba(100, 116, 139, 0.1)',
+              },
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            Cancel
+          </Button>
           <Button
             onClick={handleDeleteConfirm}
-            color="error"
             variant="contained"
+            sx={{
+              bgcolor: '#ef4444',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#dc2626',
+              },
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 500,
+              px: 3
+            }}
           >
             Delete
           </Button>
