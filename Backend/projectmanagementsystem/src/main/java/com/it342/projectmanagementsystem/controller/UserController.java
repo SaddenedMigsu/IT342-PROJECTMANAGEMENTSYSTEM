@@ -209,6 +209,7 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
                 userData.put("email", userDoc.getString("email"));
                 userData.put("role", userDoc.getString("role"));
                 userData.put("createdAt", userDoc.getTimestamp("createdAt"));
+                userData.put("profilePicture", userDoc.getString("profilePicture"));
                 users.add(userData);
             }
 
