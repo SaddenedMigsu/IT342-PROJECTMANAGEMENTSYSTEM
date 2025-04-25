@@ -163,8 +163,13 @@ const MostBookedFacultySection = () => {
       try {
         setLoading(true);
         const data = await appointmentService.getMostBookedFaculty();
-        // Use the data directly as it matches our needs
-        setMostBookedFaculty(Array.isArray(data) ? data : []);
+        // Ensure we have an array and it's properly formatted
+        const formattedData = Array.isArray(data) ? data.map(faculty => ({
+          userId: faculty.userId,
+          name: faculty.name,
+          bookingCount: faculty.bookingCount
+        })) : [];
+        setMostBookedFaculty(formattedData);
         setError(null);
       } catch (err) {
         console.error("Error fetching most booked faculty:", err);
@@ -220,7 +225,11 @@ const MostBookedFacultySection = () => {
                 width: 40,
                 height: 40,
                 bgcolor:
-                  index === 0 ? "#8B0000" : index === 1 ? "#D4A017" : "#64748B",
+                  index === 0 ? "#8B0000" : 
+                  index === 1 ? "#D4A017" : 
+                  index === 2 ? "#64748B" :
+                  index === 3 ? "#4B5563" :
+                  "#6B7280",
                 mr: 2,
               }}
             >
@@ -267,7 +276,11 @@ const MostBookedFacultySection = () => {
                 height: "100%",
                 borderRadius: 3,
                 bgcolor:
-                  index === 0 ? "#8B0000" : index === 1 ? "#D4A017" : "#64748B",
+                  index === 0 ? "#8B0000" : 
+                  index === 1 ? "#D4A017" : 
+                  index === 2 ? "#64748B" :
+                  index === 3 ? "#4B5563" :
+                  "#6B7280",
                 transition: "width 0.3s ease-in-out",
               }}
             />
@@ -315,7 +328,12 @@ const AdminDashboard = () => {
       try {
         setLoading(true);
         const data = await appointmentService.getMostBookedFaculty();
-        setFacultyData(data);
+        // Transform the data to match the expected format for the chart
+        const transformedData = Array.isArray(data) ? data.map(faculty => ({
+          name: faculty.name,
+          bookingCount: faculty.bookingCount
+        })) : [];
+        setFacultyData(transformedData);
         setError(null);
       } catch (err) {
         console.error("Error fetching most booked faculty:", err);
