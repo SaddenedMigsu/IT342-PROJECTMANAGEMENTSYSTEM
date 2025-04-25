@@ -1527,7 +1527,7 @@ public class AppointmentController {
         }
     }
 
-    // Get top 3 most booked faculty (Admin only)
+    // Get top 5 most booked faculty (Admin only)
     @GetMapping("/faculty/most-booked")
     public ResponseEntity<List<Map<String, Object>>> getTopBookedFaculty(Authentication authentication) {
         try {
@@ -1537,7 +1537,7 @@ public class AppointmentController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
 
-            logger.info("Admin {} fetching top 3 most booked faculty members", authentication.getName());
+            logger.info("Admin {} fetching top 5 most booked faculty members", authentication.getName());
 
             // Get all appointments
             var appointments = firestore.collection("appointments")
@@ -1575,10 +1575,10 @@ public class AppointmentController {
                 }
             }
 
-            // Sort faculty by booking count and get top 3
+            // Sort faculty by booking count and get top 5
             List<Map<String, Object>> topFaculty = facultyBookings.entrySet().stream()
                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                    .limit(3)
+                    .limit(5)
                     .map(entry -> {
                         Map<String, Object> facultyData = new HashMap<>();
                         facultyData.put("userId", entry.getKey());
@@ -1588,7 +1588,7 @@ public class AppointmentController {
                     })
                     .collect(Collectors.toList());
 
-            logger.info("Successfully retrieved top 3 most booked faculty members");
+            logger.info("Successfully retrieved top 5 most booked faculty members");
             return ResponseEntity.ok(topFaculty);
         } catch (Exception e) {
             logger.error("Error fetching top booked faculty: {}", e.getMessage());
@@ -1726,92 +1726,6 @@ public class AppointmentController {
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             logger.error("Error sending appointment reminder: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    @GetMapping("/all")
-    public ResponseEntity<List<Appointment>> getAllAppointments(Authentication authentication) {
-        try {
-            String userEmail = authentication.getName();
-            logger.info("Getting all appointments, requested by user: {}", userEmail);
-
-            // Get user document to check role
-            var userDocs = firestore.collection("users")
-                    .whereEqualTo("email", userEmail)
-                    .get()
-                    .get()
-                    .getDocuments();
-            
-            if (userDocs.isEmpty()) {
-                logger.error("User with email {} not found", userEmail);
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
-            var userDoc = userDocs.iterator().next();
-            String userRole = userDoc.getString("role");
-
-            // Only allow ADMIN and FACULTY to view all appointments
-            if (!"ADMIN".equals(userRole) && !"FACULTY".equals(userRole)) {
-                logger.error("User {} does not have permission to view all appointments", userEmail);
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-
-            // Get all appointments from Firestore
-            var appointmentDocs = firestore.collection("appointments")
-                    .get()
-                    .get()
-                    .getDocuments();
-
-            List<Appointment> appointments = new ArrayList<>();
-            for (var appointmentDoc : appointmentDocs) {
-                String creatorId = appointmentDoc.getString("createdBy");
-                
-                // Get creator's details
-                var creatorDoc = firestore.collection("users")
-                        .document(creatorId)
-                        .get()
-                        .get();
-                
-                String creatorName = "Unknown User";
-                if (creatorDoc.exists()) {
-                    String firstName = creatorDoc.getString("firstName");
-                    String lastName = creatorDoc.getString("lastName");
-                    if (firstName != null && lastName != null) {
-                        creatorName = firstName + " " + lastName;
-                    }
-                }
-
-                Appointment appointment = new Appointment();
-                appointment.setAppointmentId(appointmentDoc.getId());
-                appointment.setTitle(appointmentDoc.getString("title"));
-                appointment.setDescription(appointmentDoc.getString("description"));
-                appointment.setStartTime(appointmentDoc.getTimestamp("startTime"));
-                appointment.setEndTime(appointmentDoc.getTimestamp("endTime"));
-                appointment.setCreatedBy(creatorId);
-                appointment.setCreatorName(creatorName);
-                appointment.setParticipants((List<String>) appointmentDoc.get("participants"));
-                appointment.setStatus(appointmentDoc.getString("status"));
-                appointment.setCreatedAt(appointmentDoc.getTimestamp("createdAt"));
-                appointment.setUpdatedAt(appointmentDoc.getTimestamp("updatedAt"));
-                
-                // For faculty, add approval status if applicable
-                if ("FACULTY".equals(userRole)) {
-                    Map<String, Object> facultyApprovals = (Map<String, Object>) appointmentDoc.get("facultyApprovals");
-                    if (facultyApprovals != null) {
-                        String userId = userDoc.getId();
-                        Boolean hasApproved = (Boolean) facultyApprovals.get(userId);
-                        appointment.setHasApproved(hasApproved != null ? hasApproved : false);
-                    }
-                }
-                
-                appointments.add(appointment);
-            }
-
-            logger.info("Successfully retrieved {} appointments", appointments.size());
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            logger.error("Error fetching all appointments: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
