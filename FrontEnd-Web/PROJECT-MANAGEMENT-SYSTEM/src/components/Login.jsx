@@ -1,38 +1,52 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./Login.css";
 import cituLogo from "../assets/citu-logo.png";
 import authService from "../services/authService";
 
 export default function Login() {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
+  const [formData, setFormData] = useState({
+    identifier: "",
+    password: ""
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Clear any existing auth data on component mount
+  useEffect(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+  }, []);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.identifier || !formData.password) {
+      setError("Please fill in all fields");
+      return;
+    }
+
     setError("");
     setLoading(true);
 
     try {
-      const response = await authService.login(identifier, password);
-      console.log("Login successful:", response);
-
-      // Store the token
-      if (response.token) {
-        localStorage.setItem("token", response.token);
+      const response = await authService.login(formData.identifier, formData.password);
+      if (response && response.token) {
+        navigate("/admin/dashboard");
+      } else {
+        setError("Invalid login response");
       }
-
-      // Redirect to admin dashboard
-      navigate("/admin/dashboard");
     } catch (err) {
       console.error("Login error:", err);
-      setError(
-        err.response?.data?.message ||
-          "Login failed. Please check your credentials and try again."
-      );
+      setError(err.response?.data || "Failed to login. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -47,27 +61,40 @@ export default function Login() {
       <div className="login-modal">
         <img src={cituLogo} alt="CIT-U Logo" className="modal-logo" />
         <h2 className="modal-title">Log in</h2>
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="modal-form">
           <input
             type="text"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
+            name="identifier"
+            value={formData.identifier}
+            onChange={handleChange}
             placeholder="Enter ID no. or Email"
             className="input-field"
             required
             disabled={loading}
+            aria-label="Identifier"
           />
           <input
             type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
             placeholder="Password"
             className="input-field"
             required
             disabled={loading}
+            aria-label="Password"
           />
-          <button type="submit" className="login-button" disabled={loading}>
+          <button 
+            type="submit" 
+            className="login-button" 
+            disabled={loading}
+            aria-busy={loading}
+          >
             {loading ? "LOGGING IN..." : "LOGIN"}
           </button>
         </form>

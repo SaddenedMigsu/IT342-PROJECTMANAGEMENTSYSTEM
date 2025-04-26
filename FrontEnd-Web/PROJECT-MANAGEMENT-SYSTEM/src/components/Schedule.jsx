@@ -1,33 +1,46 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Typography,
+  Paper,
+  CircularProgress,
+  Alert,
   IconButton,
   Button,
-  TextField,
-  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Tooltip,
-  Avatar,
   Chip,
   Menu,
   MenuItem,
+  TextField,
 } from "@mui/material";
 import {
   ChevronLeft,
   ChevronRight,
+  Refresh,
+  Info,
   Search as SearchIcon,
-  Event,
-  AccessTime,
-  Group,
   ExpandMore,
 } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
+import appointmentService from "../services/appointmentService";
+import authService from "../services/authService";
 
-function Schedule() {
-  const [searchQuery, setSearchQuery] = useState("");
+const Schedule = () => {
+  const navigate = useNavigate();
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [yearMenuAnchor, setYearMenuAnchor] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Generate array of years (current year ± 10 years)
   const currentYear = new Date().getFullYear();
@@ -46,194 +59,42 @@ function Schedule() {
     handleYearClose();
   };
 
-  // Mock data for appointments
-  const appointments = [
-    // March appointments
-    {
-      id: 1,
-      title: "Capstone Consultation",
-      group: "Group 12",
-      members: ["John Doe", "Jane Smith", "Mike Johnson"],
-      start: new Date(2024, 2, 18, 8, 0), // Monday
-      end: new Date(2024, 2, 18, 9, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 2,
-      title: "Capstone Consultation",
-      group: "Group 21",
-      members: ["Alice Brown", "Bob Wilson"],
-      start: new Date(2024, 2, 19, 9, 0), // Tuesday
-      end: new Date(2024, 2, 19, 10, 0),
-      status: "Pending",
-    },
-    {
-      id: 3,
-      title: "Capstone Consultation",
-      group: "Group 22",
-      members: ["Sarah Lee", "Tom Clark"],
-      start: new Date(2024, 2, 20, 13, 0), // Wednesday
-      end: new Date(2024, 2, 20, 14, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 4,
-      title: "Capstone Consultation",
-      group: "Group 26",
-      members: ["Emma Davis", "James Miller"],
-      start: new Date(2024, 2, 21, 13, 0), // Thursday
-      end: new Date(2024, 2, 21, 14, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 5,
-      title: "Capstone Consultation",
-      group: "Group 2",
-      members: ["Oliver Wilson", "Sophia Martin"],
-      start: new Date(2024, 2, 22, 9, 0), // Friday
-      end: new Date(2024, 2, 22, 10, 0),
-      status: "Pending",
-    },
-    {
-      id: 6,
-      title: "Capstone Consultation",
-      group: "Group 15",
-      members: ["Mark Chen", "Lisa Wang", "Kevin Park"],
-      start: new Date(2024, 2, 18, 10, 0), // Monday
-      end: new Date(2024, 2, 18, 11, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 7,
-      title: "Capstone Consultation",
-      group: "Group 8",
-      members: ["Rachel Kim", "David Lee"],
-      start: new Date(2024, 2, 19, 13, 0), // Tuesday
-      end: new Date(2024, 2, 19, 14, 0),
-      status: "Pending",
-    },
-    {
-      id: 8,
-      title: "Capstone Consultation",
-      group: "Group 17",
-      members: ["Michael Chang", "Emily Liu"],
-      start: new Date(2024, 2, 20, 11, 0), // Wednesday
-      end: new Date(2024, 2, 20, 12, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 9,
-      title: "Capstone Consultation",
-      group: "Group 5",
-      members: ["Jessica Wu", "Andrew Tan", "Michelle Lin"],
-      start: new Date(2024, 2, 21, 9, 0), // Thursday
-      end: new Date(2024, 2, 21, 10, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 10,
-      title: "Capstone Consultation",
-      group: "Group 11",
-      members: ["Daniel Park", "Sophie Chen"],
-      start: new Date(2024, 2, 22, 15, 0), // Friday
-      end: new Date(2024, 2, 22, 16, 0),
-      status: "Pending",
-    },
-    // April appointments
-    {
-      id: 11,
-      title: "Capstone Consultation",
-      group: "Group 19",
-      members: ["Ryan Zhang", "Emma Wong"],
-      start: new Date(2024, 3, 1, 10, 0), // Monday in April
-      end: new Date(2024, 3, 1, 11, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 12,
-      title: "Capstone Consultation",
-      group: "Group 7",
-      members: ["Alex Liu", "Isabella Chen", "William Kim"],
-      start: new Date(2024, 3, 2, 14, 0), // Tuesday in April
-      end: new Date(2024, 3, 2, 15, 0),
-      status: "Pending",
-    },
-    {
-      id: 13,
-      title: "Capstone Consultation",
-      group: "Group 14",
-      members: ["Nathan Park", "Olivia Wu"],
-      start: new Date(2024, 3, 3, 11, 0), // Wednesday in April
-      end: new Date(2024, 3, 3, 12, 0),
-      status: "Confirmed",
-    },
-    // February appointments (past)
-    {
-      id: 14,
-      title: "Capstone Consultation",
-      group: "Group 23",
-      members: ["Chris Lee", "Hannah Kim", "Jason Chen"],
-      start: new Date(2024, 1, 26, 14, 0), // February
-      end: new Date(2024, 1, 26, 15, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 15,
-      title: "Capstone Consultation",
-      group: "Group 3",
-      members: ["Victoria Wang", "Brandon Zhang"],
-      start: new Date(2024, 1, 27, 9, 0), // February
-      end: new Date(2024, 1, 27, 10, 0),
-      status: "Confirmed",
-    },
-    // Additional March appointments
-    {
-      id: 16,
-      title: "Capstone Consultation",
-      group: "Group 25",
-      members: ["Lucas Kim", "Mia Chen"],
-      start: new Date(2024, 2, 25, 13, 0), // Monday
-      end: new Date(2024, 2, 25, 14, 0),
-      status: "Confirmed",
-    },
-    {
-      id: 17,
-      title: "Capstone Consultation",
-      group: "Group 16",
-      members: ["Ethan Wong", "Ava Liu", "Noah Park"],
-      start: new Date(2024, 2, 26, 10, 0), // Tuesday
-      end: new Date(2024, 2, 26, 11, 0),
-      status: "Pending",
-    },
-    {
-      id: 18,
-      title: "Capstone Consultation",
-      group: "Group 9",
-      members: ["Liam Chen", "Sophia Wu"],
-      start: new Date(2024, 2, 27, 14, 0), // Wednesday
-      end: new Date(2024, 2, 27, 15, 0),
-      status: "Confirmed",
-    },
-    // May appointments (future)
-    {
-      id: 19,
-      title: "Capstone Consultation",
-      group: "Group 28",
-      members: ["Mason Lee", "Isabella Wang"],
-      start: new Date(2024, 4, 6, 9, 0), // Monday in May
-      end: new Date(2024, 4, 6, 10, 0),
-      status: "Pending",
-    },
-    {
-      id: 20,
-      title: "Capstone Consultation",
-      group: "Group 30",
-      members: ["Jack Zhang", "Emma Chen", "William Liu"],
-      start: new Date(2024, 4, 7, 13, 0), // Tuesday in May
-      end: new Date(2024, 4, 7, 14, 0),
-      status: "Confirmed",
-    },
-  ];
+  const fetchAppointments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      // Check authentication
+      if (!authService.isAuthenticated()) {
+        navigate("/admin/login");
+        return;
+      }
+
+      const data = await appointmentService.getAllFacultyAppointments();
+      setAppointments(data);
+    } catch (err) {
+      console.error("Error fetching appointments:", err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        authService.logout();
+        navigate("/admin/login");
+      } else {
+        let errorMessage = "Failed to load appointments. ";
+        if (err.response?.status === 404) {
+          errorMessage += "The appointment service is currently unavailable. ";
+        } else if (!navigator.onLine) {
+          errorMessage += "Please check your internet connection. ";
+        }
+        errorMessage += "Please try again later.";
+        setError(errorMessage);
+      }
+      setAppointments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAppointments();
+  }, [navigate]);
 
   // Function to get all dates for the current month view
   const getDaysInMonth = (year, month) => {
@@ -280,9 +141,6 @@ function Schedule() {
     return days;
   };
 
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const hours = Array.from({ length: 11 }, (_, i) => i + 7); // 7 AM to 5 PM
-
   // Navigation functions
   const goToToday = () => {
     setCurrentDate(new Date());
@@ -316,14 +174,26 @@ function Schedule() {
 
   const getAppointmentsForDate = (date) => {
     return appointments.filter(apt => {
-      const aptDate = new Date(apt.start);
+      const aptDate = new Date(apt.startTime._seconds * 1000);
       return aptDate.getDate() === date.getDate() &&
         aptDate.getMonth() === date.getMonth() &&
         aptDate.getFullYear() === date.getFullYear();
     });
   };
 
-  const calendarDays = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+  const filteredAppointments = appointments.filter(apt => {
+    const matchesSearch = searchQuery.toLowerCase() === '' || 
+      apt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      apt.facultyName.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
+  });
+
+  const handleDateClick = (date, dateAppointments) => {
+    if (dateAppointments.length > 0) {
+      setSelectedAppointment(dateAppointments[0]); // Show first appointment if multiple exist
+      setIsDialogOpen(true);
+    }
+  };
 
   return (
     <AdminLayout>
@@ -370,6 +240,22 @@ function Schedule() {
           >
             Schedule
           </Typography>
+          {error && (
+            <Button
+              startIcon={<Refresh />}
+              onClick={fetchAppointments}
+              variant="contained"
+              sx={{
+                bgcolor: 'rgba(255, 255, 255, 0.1)',
+                color: '#ffffff',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.2)',
+                },
+              }}
+            >
+              Retry
+            </Button>
+          )}
         </Box>
 
         {/* Search and Navigation Controls */}
@@ -386,47 +272,56 @@ function Schedule() {
           }}
         >
           {/* Left side: Search */}
-          <TextField
-            placeholder="Search appointments..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+          <Box
             sx={{
               flex: { xs: '1 1 100%', sm: '1 1 280px' },
               maxWidth: { sm: 320 },
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '16px',
-                height: '45px',
-                bgcolor: '#ffffff',
-                border: '1px solid #E2E8F0',
-                '&:hover': {
-                  borderColor: '#8B0000',
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            <TextField
+              placeholder="Search appointments..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              sx={{
+                flex: { xs: '1 1 100%', sm: '1 1 280px' },
+                maxWidth: { sm: 320 },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '16px',
+                  height: '45px',
                   bgcolor: '#ffffff',
-                },
-                '&.Mui-focused': {
-                  borderColor: '#8B0000',
-                  bgcolor: '#ffffff',
+                  border: '1px solid #E2E8F0',
+                  '&:hover': {
+                    borderColor: '#8B0000',
+                    bgcolor: '#ffffff',
+                  },
+                  '&.Mui-focused': {
+                    borderColor: '#8B0000',
+                    bgcolor: '#ffffff',
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      border: 'none'
+                    }
+                  },
                   '& .MuiOutlinedInput-notchedOutline': {
                     border: 'none'
                   }
                 },
-                '& .MuiOutlinedInput-notchedOutline': {
-                  border: 'none'
+                '& .MuiInputBase-input': {
+                  color: '#1a1f36',
+                  '&::placeholder': {
+                    color: '#64748B',
+                    opacity: 1
+                  }
                 }
-              },
-              '& .MuiInputBase-input': {
-                color: '#1a1f36',
-                '&::placeholder': {
-                  color: '#64748B',
-                  opacity: 1
-                }
-              }
-            }}
-            InputProps={{
-              startAdornment: (
-                <SearchIcon sx={{ color: "#64748B", ml: 0.5, mr: 1 }} />
-              ),
-            }}
-          />
+              }}
+              InputProps={{
+                startAdornment: (
+                  <SearchIcon sx={{ color: "#64748B", ml: 0.5, mr: 1 }} />
+                ),
+              }}
+            />
+          </Box>
 
           {/* Center: Month Navigation */}
           <Box 
@@ -564,149 +459,239 @@ function Schedule() {
             }
           }}
         >
-          {/* Calendar Header */}
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              bgcolor: "#f8fafc",
-              borderBottom: "1px solid #E2E8F0",
-              p: 2,
-            }}
-          >
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-              <Typography
-                key={day}
+          {loading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+              <CircularProgress sx={{ color: "#8B0000" }} />
+            </Box>
+          ) : error ? (
+            <Alert 
+              severity="error" 
+              sx={{ 
+                m: 2,
+                borderRadius: '16px',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                bgcolor: 'rgba(239, 68, 68, 0.05)'
+              }}
+              action={
+                <IconButton
+                  color="inherit"
+                  size="small"
+                  onClick={fetchAppointments}
+                >
+                  <Refresh />
+                </IconButton>
+              }
+            >
+              {error}
+            </Alert>
+          ) : (
+            <>
+              {/* Calendar Header */}
+              <Box
                 sx={{
-                  textAlign: "center",
-                  color: "#1a1f36",
-                  fontWeight: 600,
-                  fontSize: "0.875rem",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  bgcolor: "#f8fafc",
+                  borderBottom: "1px solid #E2E8F0",
+                  p: 2,
                 }}
               >
-                {day}
-              </Typography>
-            ))}
-          </Box>
-
-          {/* Calendar Days */}
-          <Box sx={{ p: 2 }}>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
-                gap: 1,
-              }}
-            >
-              {getDaysInMonth(
-                currentDate.getFullYear(),
-                currentDate.getMonth()
-              ).map((dayObj, index) => {
-                const date = dayObj.date;
-                const isCurrentMonth = dayObj.isCurrentMonth;
-                const appointments = getAppointmentsForDate(date);
-
-                return (
-                  <Box
-                    key={index}
-                    onClick={() => setSelectedDate(date)}
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                  <Typography
+                    key={day}
                     sx={{
-                      position: "relative",
-                      minHeight: "120px",
-                      p: 1,
-                      border: "1px solid #E2E8F0",
-                      borderRadius: "16px",
-                      bgcolor: isSelected(date)
-                        ? "rgba(139, 0, 0, 0.05)"
-                        : isToday(date)
-                        ? "rgba(37, 99, 235, 0.05)"
-                        : "transparent",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      "&:hover": {
-                        bgcolor: "rgba(139, 0, 0, 0.05)",
-                        transform: "translateY(-2px)",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-                      },
+                      textAlign: "center",
+                      color: "#1a1f36",
+                      fontWeight: 600,
+                      fontSize: "0.875rem",
                     }}
                   >
-                    <Typography
-                      sx={{
-                        textAlign: "center",
-                        color: !isCurrentMonth
-                          ? "#CBD5E1"
-                          : isToday(date)
-                          ? "#2563EB"
-                          : "#1a1f36",
-                        fontWeight: isToday(date) ? 600 : 500,
-                        mb: 1,
-                      }}
-                    >
-                      {date.getDate()}
-                    </Typography>
+                    {day}
+                  </Typography>
+                ))}
+              </Box>
 
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                      {appointments.slice(0, 2).map((appointment) => (
-                        <Tooltip
-                          key={appointment.id}
-                          title={
-                            <Box>
-                              <Typography variant="subtitle2">
-                                {appointment.title}
-                              </Typography>
-                              <Typography variant="body2">
-                                {appointment.group}
-                              </Typography>
-                              <Typography variant="body2">
-                                {`${appointment.start.toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })} - ${appointment.end.toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}`}
-                              </Typography>
-                            </Box>
-                          }
-                        >
-                          <Chip
-                            size="small"
-                            label={appointment.group}
-                            sx={{
-                              bgcolor: appointment.status === "Confirmed"
-                                ? "rgba(22, 163, 74, 0.1)"
-                                : "rgba(239, 68, 68, 0.1)",
-                              color: appointment.status === "Confirmed"
-                                ? "#16a34a"
-                                : "#ef4444",
-                              fontWeight: 500,
-                              fontSize: "0.75rem",
-                              width: "100%",
-                              borderRadius: "8px",
-                              '& .MuiChip-label': {
-                                px: 1,
-                              },
-                            }}
-                          />
-                        </Tooltip>
-                      ))}
-                      {appointments.length > 2 && (
+              {/* Calendar Days */}
+              <Box sx={{ p: 2 }}>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(7, 1fr)",
+                    gap: 1,
+                  }}
+                >
+                  {getDaysInMonth(
+                    currentDate.getFullYear(),
+                    currentDate.getMonth()
+                  ).map((dayObj, index) => {
+                    const date = dayObj.date;
+                    const isCurrentMonth = dayObj.isCurrentMonth;
+                    const dayAppointments = getAppointmentsForDate(date);
+
+                    return (
+                      <Box
+                        key={index}
+                        onClick={() => setSelectedDate(date)}
+                        sx={{
+                          position: "relative",
+                          minHeight: "120px",
+                          p: 1.5,
+                          border: "1px solid #E2E8F0",
+                          borderRadius: "16px",
+                          bgcolor: isSelected(date)
+                            ? "rgba(139, 0, 0, 0.03)"
+                            : isToday(date)
+                            ? "rgba(37, 99, 235, 0.03)"
+                            : "transparent",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            bgcolor: "rgba(139, 0, 0, 0.03)",
+                            transform: "translateY(-2px)",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+                          },
+                        }}
+                      >
                         <Typography
                           sx={{
-                            color: "#64748B",
-                            fontSize: "0.75rem",
                             textAlign: "center",
+                            color: !isCurrentMonth
+                              ? "#CBD5E1"
+                              : isToday(date)
+                              ? "#2563EB"
+                              : "#1a1f36",
+                            fontWeight: isToday(date) ? 600 : 500,
+                            mb: 1.5,
+                            fontSize: '0.875rem',
                           }}
                         >
-                          +{appointments.length - 2} more
+                          {date.getDate()}
                         </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Box>
+
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+                          {dayAppointments.slice(0, 2).map((appointment) => (
+                            <Tooltip
+                              key={appointment.appointmentId}
+                              title={
+                                <Box>
+                                  <Typography variant="subtitle2">
+                                    {appointment.title}
+                                  </Typography>
+                                  <Typography variant="body2">
+                                    Faculty: {appointment.facultyName}
+                                  </Typography>
+                                  <Typography variant="body2">
+                                    {appointmentService.formatDate(appointment.startTime)}
+                                  </Typography>
+                                </Box>
+                              }
+                            >
+                              <Box
+                                sx={{
+                                  background: 'linear-gradient(135deg, #8B0000 0%, #6B0000 100%)',
+                                  color: '#ffffff',
+                                  p: '8px 10px',
+                                  borderRadius: '6px',
+                                  width: '100%',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  boxShadow: '0 2px 4px rgba(139, 0, 0, 0.15)',
+                                  '&:hover': {
+                                    background: 'linear-gradient(135deg, #7B0000 0%, #5B0000 100%)',
+                                    transform: 'translateY(-1px)',
+                                    boxShadow: '0 4px 8px rgba(139, 0, 0, 0.2)',
+                                  },
+                                }}
+                              >
+                                {appointment.startTime && (
+                                  <Typography
+                                    sx={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: 500,
+                                      color: 'rgba(255, 255, 255, 0.9)',
+                                      mb: 0.5,
+                                      letterSpacing: '0.3px',
+                                    }}
+                                  >
+                                    {new Date(appointment.startTime._seconds * 1000).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    })}
+                                  </Typography>
+                                )}
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                  <Typography
+                                    sx={{
+                                      fontSize: '0.75rem',
+                                      fontWeight: 600,
+                                      color: 'inherit',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      lineHeight: 1.2,
+                                    }}
+                                  >
+                                    Meeting with {appointment.facultyName}
+                                  </Typography>
+                                  <Typography
+                                    sx={{
+                                      fontSize: '0.7rem',
+                                      color: 'rgba(255, 255, 255, 0.85)',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 0.5,
+                                    }}
+                                  >
+                                    Faculty: {appointment.facultyName}
+                                  </Typography>
+                                  <Typography
+                                    sx={{
+                                      fontSize: '0.7rem',
+                                      color: 'rgba(255, 255, 255, 0.85)',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                    }}
+                                  >
+                                    {new Date(appointment.startTime._seconds * 1000).toLocaleDateString([], {
+                                      month: 'numeric',
+                                      day: 'numeric',
+                                      year: 'numeric',
+                                    })}, {new Date(appointment.startTime._seconds * 1000).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    })}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Tooltip>
+                          ))}
+                          {dayAppointments.length > 2 && (
+                            <Typography
+                              sx={{
+                                color: "#64748B",
+                                fontSize: "0.75rem",
+                                textAlign: "center",
+                                mt: 0.5,
+                                fontWeight: 500,
+                              }}
+                            >
+                              +{dayAppointments.length - 2} more
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            </>
+          )}
         </Paper>
 
         {/* Year Selection Menu */}
@@ -741,9 +726,51 @@ function Schedule() {
             </MenuItem>
           ))}
         </Menu>
+
+        {/* Appointment Details Dialog */}
+        <Dialog 
+          open={isDialogOpen} 
+          onClose={() => setIsDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 600 }}>
+            Appointment Details
+          </DialogTitle>
+          <DialogContent dividers>
+            {selectedAppointment && (
+              <Box sx={{ py: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                  {selectedAppointment.title}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>Faculty:</strong> {selectedAppointment.facultyName}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>Created By:</strong> {selectedAppointment.creatorName}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>Start Time:</strong> {appointmentService.formatDate(selectedAppointment.startTime)}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>End Time:</strong> {appointmentService.formatDate(selectedAppointment.endTime)}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>Status:</strong> {selectedAppointment.status}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Approved:</strong> {selectedAppointment.hasApproved ? "Yes" : "No"}
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setIsDialogOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </AdminLayout>
   );
-}
+};
 
 export default Schedule;

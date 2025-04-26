@@ -111,6 +111,7 @@ const MyAccount = () => {
       const updates = {
         firstName: formData.firstName,
         lastName: formData.lastName,
+        email: formData.email,
         phoneNumber: formData.phoneNumber,
       };
 

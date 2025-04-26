@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -26,6 +27,7 @@ import {
 import { Search, MoreVert, Delete } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
 import userService from "../services/userService";
+import authService from "../services/authService";
 
 // Color palette for avatars
 const avatarColors = [
@@ -54,9 +56,10 @@ const getAvatarColor = (name) => {
 };
 
 const Users = () => {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("Newest");
+  const [sortBy, setSortBy] = useState("");
   const [selectedRoles, setSelectedRoles] = useState(["All"]);
   const [page, setPage] = useState(1);
   const [rowsPerPage] = useState(8);
@@ -66,35 +69,63 @@ const Users = () => {
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [availableRoles, setAvailableRoles] = useState(["All"]);
+  const [imageLoadErrors, setImageLoadErrors] = useState({});
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const checkAuth = () => {
+      if (!authService.isAuthenticated()) {
+        navigate("/admin/login");
+        return;
+      }
+    };
+    checkAuth();
+  }, [navigate]);
 
   // Fetch users from the backend
   useEffect(() => {
     const fetchUsers = async () => {
       try {
+        if (!authService.isAuthenticated()) {
+          navigate("/admin/login");
+          return;
+        }
+
         setLoading(true);
         const data = await userService.getAllUsers();
         
-        // Debug log for raw user data
-        console.log('Raw user data from backend:', data);
-        console.log('Sample user profile picture data:', data[0]?.profilePicture);
-
         // Transform the data to match our component's structure
-        const transformedUsers = data.map((user) => ({
-          id: user.userId,
-          name: `${user.firstName} ${user.lastName}`,
-          role: user.role,
-          email: user.email,
-          status: "Active",
-          createdAt: user.createdAt,
-          profilePicture: user.profilePicture ? `http://localhost:8080${user.profilePicture}` : null
-        }));
+        const transformedUsers = data.map((user) => {
+          // Handle different date formats
+          let createdDate;
+          if (user.createdAt) {
+            if (typeof user.createdAt === 'object' && user.createdAt.seconds) {
+              // Handle Firestore timestamp
+              createdDate = new Date(user.createdAt.seconds * 1000).toISOString();
+            } else if (typeof user.createdAt === 'string') {
+              // Handle string date
+              createdDate = new Date(user.createdAt).toISOString();
+            } else {
+              // Handle timestamp in milliseconds
+              createdDate = new Date(user.createdAt).toISOString();
+            }
+          } else {
+            console.warn(`No creation date for user ${user.userId}`);
+            createdDate = new Date(0).toISOString(); // Use epoch time as fallback
+          }
 
-        // Log transformed users
-        console.log('Transformed users with profile pictures:', transformedUsers.map(u => ({ 
-          id: u.id, 
-          name: u.name, 
-          profilePicture: u.profilePicture 
-        })));
+          return {
+            id: user.userId,
+            name: `${user.firstName} ${user.lastName}`.trim(),
+            role: user.role || 'User',
+            email: user.email,
+            status: user.status || "Active",
+            createdAt: createdDate,
+            profilePicture: user.profilePicture || null
+          };
+        });
+
+        console.log('Transformed users with dates:', transformedUsers.slice(0, 3));
 
         // Extract unique roles from users
         const roles = [...new Set(transformedUsers.map((user) => user.role))];
@@ -104,14 +135,19 @@ const Users = () => {
         setError(null);
       } catch (err) {
         console.error("Error fetching users:", err);
-        setError("Failed to load users. Please try again later.");
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          authService.logout();
+          navigate("/admin/login");
+        } else {
+          setError("Failed to load users. Please try again later.");
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchUsers();
-  }, []);
+  }, [navigate]);
 
   // Reset page when search query or roles change
   useEffect(() => {
@@ -123,6 +159,7 @@ const Users = () => {
   };
 
   const handleSortChange = (event) => {
+    console.log('Sort value changed to:', event.target.value);
     setSortBy(event.target.value);
   };
 
@@ -168,6 +205,13 @@ const Users = () => {
     setDeleteError(null);
   };
 
+  const handleImageError = (userId) => {
+    setImageLoadErrors(prev => ({
+      ...prev,
+      [userId]: true
+    }));
+  };
+
   // Filter and sort users
   const getFilteredAndSortedUsers = () => {
     let filtered = users;
@@ -191,36 +235,15 @@ const Users = () => {
     // Create a new array for sorting to avoid mutating the original
     const sortedUsers = [...filtered];
 
-    // Log users before sorting
-    console.log('Users before sorting:', sortBy, sortedUsers.slice(0, 3).map(user => ({
-      name: user.name,
-      createdAt: user.createdAt,
-      parsedDate: new Date(user.createdAt)
-    })));
-
-    // Apply sorting with proper date parsing
-    sortedUsers.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-
-      // Log comparison if dates are invalid
-      if (isNaN(dateA) || isNaN(dateB)) {
-        console.log('Invalid date found:', {
-          userA: { name: a.name, createdAt: a.createdAt, parsed: new Date(a.createdAt) },
-          userB: { name: b.name, createdAt: b.createdAt, parsed: new Date(b.createdAt) }
-        });
-        return 0;
-      }
-
-      return sortBy === "Newest" ? dateB - dateA : dateA - dateB;
-    });
-
-    // Log users after sorting
-    console.log('Users after sorting:', sortBy, sortedUsers.slice(0, 3).map(user => ({
-      name: user.name,
-      createdAt: user.createdAt,
-      parsedDate: new Date(user.createdAt)
-    })));
+    // Only sort if a sort option is selected
+    if (sortBy) {
+      sortedUsers.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        
+        return sortBy === "Newest" ? dateB - dateA : dateA - dateB;
+      });
+    }
 
     return sortedUsers;
   };
@@ -242,79 +265,63 @@ const Users = () => {
     <Box
       key={user.id}
       sx={{
-        display: "grid",
-        gridTemplateColumns: "2.5fr 1fr 2fr 1fr 1fr",
-        borderBottom: "1px solid #E2E8F0",
+        display: "flex",
+        alignItems: "center",
         p: 2,
-        bgcolor: "white",
-        "&:hover": { bgcolor: "#F8FAFC" },
-        "&:last-child": { borderBottom: "none" },
+        borderBottom: "1px solid",
+        borderColor: "divider",
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <Avatar
-          src={user.profilePicture}
-          alt={user.name}
-          imgProps={{
-            crossOrigin: "anonymous",
-            referrerPolicy: "no-referrer"
-          }}
-          sx={{
-            width: 40,
-            height: 40,
-            bgcolor: user.profilePicture ? 'transparent' : getAvatarColor(user.name),
-            fontSize: "1rem",
-            fontWeight: 600,
-            border: '2px solid white',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            '& img': {
-              objectFit: 'cover',
-              width: '100%',
-              height: '100%'
-            }
-          }}
-        >
-          {!user.profilePicture && user.name
-            .split(" ")
-            .map((n) => n[0])
-            .join("")}
-        </Avatar>
-        <Typography
-          sx={{ color: "#1a1f36", fontSize: "0.875rem", fontWeight: 500 }}
-        >
-          {user.name}
-        </Typography>
-      </Box>
-      <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
-        {user.role}
+      <Avatar
+        src={imageLoadErrors[user.id] ? null : user.profilePicture}
+        alt={user.name}
+        imgProps={{
+          crossOrigin: "anonymous",
+          referrerPolicy: "no-referrer",
+          loading: "lazy",
+          onError: (e) => {
+            console.error('Error loading profile picture:', e);
+            handleImageError(user.id);
+          }
+        }}
+        sx={{
+          width: 40,
+          height: 40,
+          bgcolor: imageLoadErrors[user.id] || !user.profilePicture ? getAvatarColor(user.name) : 'transparent',
+          fontSize: "1rem",
+          fontWeight: 600,
+          border: '2px solid white',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          transition: 'transform 0.2s ease-in-out',
+          '&:hover': {
+            transform: 'scale(1.1)'
+          },
+          '& img': {
+            objectFit: 'cover',
+            width: '100%',
+            height: '100%'
+          }
+        }}
+        onError={() => handleImageError(user.id)}
+      >
+        {(imageLoadErrors[user.id] || !user.profilePicture) && user.name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")}
+      </Avatar>
+      <Typography
+        sx={{ 
+          color: "#1a1f36", 
+          fontSize: "0.875rem", 
+          fontWeight: 500,
+          transition: 'color 0.2s ease',
+          '&:hover': {
+            color: '#8B0000'
+          }
+        }}
+      >
+        {user.name}
       </Typography>
-      <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
-        {user.email}
-      </Typography>
-      <Box>
-        <Chip
-          label={user.status}
-          size="small"
-          sx={{
-            bgcolor: user.status === "Active" ? "#dcfce7" : "#fee2e2",
-            color: user.status === "Active" ? "#16a34a" : "#ef4444",
-            fontWeight: 500,
-            fontSize: "0.75rem",
-          }}
-        />
-      </Box>
-      <Box>
-        <IconButton
-          size="small"
-          sx={{
-            color: "#8B0000",
-            "&:hover": { bgcolor: "rgba(139, 0, 0, 0.1)" },
-          }}
-          onClick={() => handleDeleteClick(user)}
-        >
-          <Delete sx={{ fontSize: 20 }} />
-        </IconButton>
-      </Box>
     </Box>
   );
 
@@ -541,6 +548,7 @@ const Users = () => {
           <FormControl sx={{ minWidth: 180, flex: { xs: '1 1 100%', sm: 'initial' } }}>
             <Select
               value={sortBy}
+              onChange={handleSortChange}
               displayEmpty
               renderValue={(value) => (
                 <Typography sx={{ color: value ? '#1a1f36' : '#64748B' }}>
@@ -581,38 +589,87 @@ const Users = () => {
                 },
               }}
             >
-              {[
-                { value: "Newest", label: "Newest" },
-                { value: "Oldest", label: "Oldest" }
-              ].map((option) => (
-                <MenuItem
-                  key={option.value}
-                  value={option.value}
-                  sx={{
-                    fontSize: '0.875rem',
-                    py: 1.2,
-                    px: 2,
-                    borderRadius: '8px',
-                    mx: 0.8,
-                    my: 0.3,
-                    fontWeight: sortBy === option.value ? 600 : 400,
-                    color: sortBy === option.value ? '#8B0000' : '#1a1f36',
+              <MenuItem
+                value=""
+                onClick={() => setSortBy("")}
+                sx={{
+                  fontSize: '0.875rem',
+                  py: 1.2,
+                  px: 2,
+                  borderRadius: '8px',
+                  mx: 0.8,
+                  my: 0.3,
+                  fontWeight: !sortBy ? 600 : 400,
+                  color: !sortBy ? '#8B0000' : '#1a1f36',
+                  '&:hover': {
+                    backgroundColor: 'rgba(139, 0, 0, 0.04)',
+                  },
+                  '&.Mui-selected': {
+                    backgroundColor: 'rgba(139, 0, 0, 0.08)',
+                    color: '#8B0000',
+                    fontWeight: 600,
                     '&:hover': {
-                      backgroundColor: 'rgba(139, 0, 0, 0.04)',
+                      backgroundColor: 'rgba(139, 0, 0, 0.12)',
                     },
-                    '&.Mui-selected': {
-                      backgroundColor: 'rgba(139, 0, 0, 0.08)',
-                      color: '#8B0000',
-                      fontWeight: 600,
-                      '&:hover': {
-                        backgroundColor: 'rgba(139, 0, 0, 0.12)',
-                      },
+                  },
+                }}
+              >
+                None
+              </MenuItem>
+              <MenuItem
+                value="Newest"
+                onClick={() => setSortBy("Newest")}
+                sx={{
+                  fontSize: '0.875rem',
+                  py: 1.2,
+                  px: 2,
+                  borderRadius: '8px',
+                  mx: 0.8,
+                  my: 0.3,
+                  fontWeight: sortBy === "Newest" ? 600 : 400,
+                  color: sortBy === "Newest" ? '#8B0000' : '#1a1f36',
+                  '&:hover': {
+                    backgroundColor: 'rgba(139, 0, 0, 0.04)',
+                  },
+                  '&.Mui-selected': {
+                    backgroundColor: 'rgba(139, 0, 0, 0.08)',
+                    color: '#8B0000',
+                    fontWeight: 600,
+                    '&:hover': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.12)',
                     },
-                  }}
-                >
-                  {option.label}
-                </MenuItem>
-              ))}
+                  },
+                }}
+              >
+                Newest
+              </MenuItem>
+              <MenuItem
+                value="Oldest"
+                onClick={() => setSortBy("Oldest")}
+                sx={{
+                  fontSize: '0.875rem',
+                  py: 1.2,
+                  px: 2,
+                  borderRadius: '8px',
+                  mx: 0.8,
+                  my: 0.3,
+                  fontWeight: sortBy === "Oldest" ? 600 : 400,
+                  color: sortBy === "Oldest" ? '#8B0000' : '#1a1f36',
+                  '&:hover': {
+                    backgroundColor: 'rgba(139, 0, 0, 0.04)',
+                  },
+                  '&.Mui-selected': {
+                    backgroundColor: 'rgba(139, 0, 0, 0.08)',
+                    color: '#8B0000',
+                    fontWeight: 600,
+                    '&:hover': {
+                      backgroundColor: 'rgba(139, 0, 0, 0.12)',
+                    },
+                  },
+                }}
+              >
+                Oldest
+              </MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -717,28 +774,38 @@ const Users = () => {
               >
                 <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                   <Avatar
-                    src={user.profilePicture}
+                    src={imageLoadErrors[user.id] ? null : user.profilePicture}
                     alt={user.name}
                     imgProps={{
                       crossOrigin: "anonymous",
-                      referrerPolicy: "no-referrer"
+                      referrerPolicy: "no-referrer",
+                      loading: "lazy",
+                      onError: (e) => {
+                        console.error('Error loading profile picture:', e);
+                        handleImageError(user.id);
+                      }
                     }}
                     sx={{
                       width: 40,
                       height: 40,
-                      bgcolor: user.profilePicture ? 'transparent' : getAvatarColor(user.name),
+                      bgcolor: imageLoadErrors[user.id] || !user.profilePicture ? getAvatarColor(user.name) : 'transparent',
                       fontSize: "1rem",
                       fontWeight: 600,
                       border: '2px solid white',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      transition: 'transform 0.2s ease-in-out',
+                      '&:hover': {
+                        transform: 'scale(1.1)'
+                      },
                       '& img': {
                         objectFit: 'cover',
                         width: '100%',
                         height: '100%'
                       }
                     }}
+                    onError={() => handleImageError(user.id)}
                   >
-                    {!user.profilePicture && user.name
+                    {(imageLoadErrors[user.id] || !user.profilePicture) && user.name
                       .split(" ")
                       .map((n) => n[0])
                       .join("")}

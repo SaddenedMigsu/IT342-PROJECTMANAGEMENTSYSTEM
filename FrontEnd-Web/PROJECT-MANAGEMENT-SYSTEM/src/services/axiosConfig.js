@@ -11,8 +11,14 @@ const api = axios.create({
 // Add a request interceptor
 api.interceptors.request.use(
   (config) => {
+    // Don't add token for auth endpoints
+    if (config.url.includes('/auth/')) {
+      return config;
+    }
+
     const token = localStorage.getItem("token");
     if (token) {
+      // Set the Authorization header for every request if token exists
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -25,20 +31,28 @@ api.interceptors.request.use(
 // Add a response interceptor
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Only handle 401/403 for non-login endpoints
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      const isLoginEndpoint = error.config.url.includes("/users/login");
-      if (!isLoginEndpoint) {
-        // Clear token only for non-login endpoints
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        // Redirect to login only if not already on login page
-        if (!window.location.pathname.includes("/login")) {
-          window.location.href = "/admin/login";
-        }
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Don't handle auth errors for auth endpoints
+    if (originalRequest.url.includes('/auth/')) {
+      return Promise.reject(error);
+    }
+
+    // Handle 401 Unauthorized errors
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      // Clear authentication data
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      
+      // Redirect to login page if not already there
+      if (!window.location.pathname.includes("/login")) {
+        window.location.href = "/admin/login";
       }
     }
+
     return Promise.reject(error);
   }
 );
