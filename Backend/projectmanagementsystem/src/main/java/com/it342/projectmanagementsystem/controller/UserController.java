@@ -291,6 +291,20 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
         }
     }
 
+    @GetMapping("/students")
+    public ResponseEntity<?> getAllStudents(Authentication authentication) {
+        try {
+            logger.info("User {} fetching all students", authentication.getName());
+            List<Map<String, Object>> students = userService.getAllStudents();
+            logger.info("Successfully retrieved {} students", students.size());
+            return ResponseEntity.ok(students);
+
+        } catch (Exception e) {
+            logger.error("Error fetching all students: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Failed to fetch students: " + e.getMessage());
+        }
+    }
+
     // Update FCM Token
     @PostMapping("/fcm-token")
     public ResponseEntity<?> updateFcmToken(
