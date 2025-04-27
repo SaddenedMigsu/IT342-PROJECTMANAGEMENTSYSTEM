@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -330,5 +331,28 @@ public class UserService {
         
         // Count all users (they are considered active by default)
         return userDocs.size();
+    }
+
+    public List<Map<String, Object>> getAllStudents() throws ExecutionException, InterruptedException {
+        // Get all users with STUDENT role from Firestore
+        var userDocs = firestore.collection("users")
+                .whereEqualTo("role", "STUDENT")
+                .get()
+                .get()
+                .getDocuments();
+
+        List<Map<String, Object>> students = new ArrayList<>();
+        for (var userDoc : userDocs) {
+            Map<String, Object> studentData = new HashMap<>();
+            studentData.put("userId", userDoc.getId());
+            studentData.put("studId", userDoc.getString("studId"));
+            studentData.put("firstName", userDoc.getString("firstName"));
+            studentData.put("lastName", userDoc.getString("lastName"));
+            studentData.put("email", userDoc.getString("email"));
+            studentData.put("course", userDoc.getString("course"));
+            students.add(studentData);
+        }
+
+        return students;
     }
 }
