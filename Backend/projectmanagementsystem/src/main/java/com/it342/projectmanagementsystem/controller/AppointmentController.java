@@ -766,12 +766,12 @@ public class AppointmentController {
     // 8. Export Appointment Summary
     @GetMapping(value = "/export", produces = "text/csv")
     public ResponseEntity<byte[]> exportAppointments(
-                                              @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             Authentication authentication) {
         try {
             String userEmail = authentication.getName();
-            logger.info("Exporting appointments for user: {} between {} and {}", userEmail, startDate, endDate);
+            logger.info("Exporting all appointments (ADMIN only) for user: {} between {} and {}", userEmail, startDate, endDate);
 
             // Get user document
             var userDocs = firestore.collection("users")
@@ -785,30 +785,45 @@ public class AppointmentController {
             }
             
             var userDoc = userDocs.iterator().next();
-            String userId = userDoc.getId();
             String userRole = userDoc.getString("role");
-            logger.info("Found user ID: {} with role: {}", userId, userRole);
+            if (!"ADMIN".equals(userRole)) {
+                logger.error("Unauthorized export attempt by non-admin user: {}", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
 
-            List<DocumentSnapshot> appointmentDocs;
-            if ("ADMIN".equals(userRole)) {
-                // Admin: export all appointments
-                appointmentDocs = new ArrayList<>(firestore.collection("appointments").get().get().getDocuments());
-            } else {
-                // Regular user: export only their appointments
-                var userAppointments = firestore.collection("user_appointments")
-                        .whereEqualTo("userId", userId)
-                        .get()
-                        .get();
-                appointmentDocs = new ArrayList<>();
-                for (var userAppointment : userAppointments) {
-                    String appointmentId = userAppointment.getString("appointmentId");
-                    var appointmentDoc = firestore.collection("appointments")
-                            .document(appointmentId)
-                            .get()
-                            .get();
-                    if (appointmentDoc.exists()) {
-                        appointmentDocs.add(appointmentDoc);
-                    }
+            // Get all appointments
+            var appointments = firestore.collection("appointments")
+                    .get()
+                    .get()
+                    .getDocuments();
+
+            logger.info("Found {} total appointments", appointments.size());
+
+            // Convert dates if provided
+            Timestamp startTimestamp = null;
+            Timestamp endTimestamp = null;
+            if (startDate != null && !startDate.isEmpty()) {
+                try {
+                    Instant start = Instant.parse(startDate);
+                    startTimestamp = Timestamp.ofTimeSecondsAndNanos(
+                        start.getEpochSecond(),
+                        start.getNano()
+                    );
+                    logger.info("Parsed start date: {} ({})", startTimestamp.toDate(), startTimestamp);
+                } catch (Exception e) {
+                    logger.error("Error parsing start date: {}", e.getMessage());
+                }
+            }
+            if (endDate != null && !endDate.isEmpty()) {
+                try {
+                    Instant end = Instant.parse(endDate);
+                    endTimestamp = Timestamp.ofTimeSecondsAndNanos(
+                        end.getEpochSecond(),
+                        end.getNano()
+                    );
+                    logger.info("Parsed end date: {} ({})", endTimestamp.toDate(), endTimestamp);
+                } catch (Exception e) {
+                    logger.error("Error parsing end date: {}", e.getMessage());
                 }
             }
 
@@ -823,40 +838,29 @@ public class AppointmentController {
 
             int processedAppointments = 0;
             int skippedAppointments = 0;
-            for (var appointmentDoc : appointmentDocs) {
+            for (var appointmentDoc : appointments) {
                 try {
                     Timestamp appointmentStart = appointmentDoc.getTimestamp("startTime");
                     Timestamp appointmentEnd = appointmentDoc.getTimestamp("endTime");
 
                     // Apply date filter if dates are provided
-                    if (startDate != null && !startDate.isEmpty()) {
-                        try {
-                            Instant start = Instant.parse(startDate);
-                            Timestamp startTimestamp = Timestamp.ofTimeSecondsAndNanos(
-                                start.getEpochSecond(),
-                                start.getNano()
-                            );
-                            if (appointmentEnd.compareTo(startTimestamp) < 0 || appointmentStart.compareTo(startTimestamp) > 0) {
-                                skippedAppointments++;
-                                continue;
-                            }
-                        } catch (Exception e) {
-                            logger.error("Error parsing start date: {}", e.getMessage());
+                    if (startTimestamp != null && endTimestamp != null) {
+                        // Skip if appointment ends before the start date or starts after the end date
+                        if (appointmentEnd.compareTo(startTimestamp) < 0 || appointmentStart.compareTo(endTimestamp) > 0) {
+                            skippedAppointments++;
+                            continue;
                         }
-                    }
-                    if (endDate != null && !endDate.isEmpty()) {
-                        try {
-                            Instant end = Instant.parse(endDate);
-                            Timestamp endTimestamp = Timestamp.ofTimeSecondsAndNanos(
-                                end.getEpochSecond(),
-                                end.getNano()
-                            );
-                            if (appointmentEnd.compareTo(endTimestamp) < 0 || appointmentStart.compareTo(endTimestamp) > 0) {
-                                skippedAppointments++;
-                                continue;
-                            }
-                        } catch (Exception e) {
-                            logger.error("Error parsing end date: {}", e.getMessage());
+                    } else if (startTimestamp != null) {
+                        // Skip if appointment ends before start date
+                        if (appointmentEnd.compareTo(startTimestamp) < 0) {
+                            skippedAppointments++;
+                            continue;
+                        }
+                    } else if (endTimestamp != null) {
+                        // Skip if appointment starts after end date
+                        if (appointmentStart.compareTo(endTimestamp) > 0) {
+                            skippedAppointments++;
+                            continue;
                         }
                     }
 
@@ -904,6 +908,7 @@ public class AppointmentController {
 
                     processedAppointments++;
                 } catch (Exception e) {
+                    logger.error("Error processing appointment: {}", e.getMessage());
                     // Continue processing other appointments
                     continue;
                 }
