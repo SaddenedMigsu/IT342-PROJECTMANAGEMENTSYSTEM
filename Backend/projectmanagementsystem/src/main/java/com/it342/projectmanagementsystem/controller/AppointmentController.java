@@ -855,17 +855,9 @@ public class AppointmentController {
                             appointmentEnd.toDate(), appointmentEnd);
 
                         // Apply date filter if dates are provided
-                        // Check if appointment falls within the date range
                         if (startTimestamp != null && endTimestamp != null) {
-                            // Log comparison results
-                            boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
-                            boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
-                            
-                            logger.info("Date range check for appointment {}: isAfterEndDate={}, isBeforeStartDate={}", 
-                                appointmentId, isAfterEndDate, isBeforeStartDate);
-                            
-                            // Skip if appointment starts after end date or ends before start date
-                            if (isAfterEndDate || isBeforeStartDate) {
+                            // Skip if appointment ends before the start date or starts after the end date
+                            if (appointmentEnd.compareTo(startTimestamp) < 0 || appointmentStart.compareTo(endTimestamp) > 0) {
                                 logger.info("Appointment {} outside date range - Skipping", appointmentId);
                                 skippedAppointments++;
                                 continue;
@@ -875,7 +867,6 @@ public class AppointmentController {
                             boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
                             logger.info("Start date check for appointment {}: isBeforeStartDate={}", 
                                 appointmentId, isBeforeStartDate);
-                            
                             if (isBeforeStartDate) {
                                 logger.info("Appointment {} before start date - Skipping", appointmentId);
                                 skippedAppointments++;
@@ -886,7 +877,6 @@ public class AppointmentController {
                             boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
                             logger.info("End date check for appointment {}: isAfterEndDate={}", 
                                 appointmentId, isAfterEndDate);
-                            
                             if (isAfterEndDate) {
                                 logger.info("Appointment {} after end date - Skipping", appointmentId);
                                 skippedAppointments++;
