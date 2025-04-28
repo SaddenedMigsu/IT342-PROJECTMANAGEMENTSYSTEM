@@ -42,6 +42,19 @@ const Schedule = () => {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  useEffect(() => {
+    // Get date from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const dateParam = urlParams.get('date');
+    
+    if (dateParam) {
+      const [year, month, day] = dateParam.split('-').map(Number);
+      const newDate = new Date(year, month - 1, day);
+      setCurrentDate(newDate);
+      setSelectedDate(newDate);
+    }
+  }, []);
+
   // Generate array of years (current year ± 10 years)
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 21 }, (_, i) => currentYear - 10 + i);

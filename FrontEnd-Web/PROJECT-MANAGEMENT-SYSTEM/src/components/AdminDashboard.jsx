@@ -108,13 +108,14 @@ const recentActivities = [
 const StatsCard = ({ icon, title, value, color, loading = false }) => (
   <Paper
     sx={{
-      p: 2.5,
+      p: 4,
       borderRadius: 2,
       boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
       bgcolor: "white",
       display: "flex",
-      alignItems: "flex-start",
-      gap: 2,
+      alignItems: "center",
+      gap: 3,
+      height: "100%",
       transition: "transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out",
       "&:hover": {
         transform: "translateY(-2px)",
@@ -124,7 +125,8 @@ const StatsCard = ({ icon, title, value, color, loading = false }) => (
   >
     <Box
       sx={{
-        p: 1.5,
+        width: 60,
+        height: 60,
         borderRadius: 2,
         bgcolor: `${color}15`,
         display: "flex",
@@ -137,15 +139,18 @@ const StatsCard = ({ icon, title, value, color, loading = false }) => (
     <Box>
       <Typography
         variant="body2"
-        color="text.secondary"
-        sx={{ mb: 0.5, fontSize: "0.875rem" }}
+        sx={{
+          color: "#64748b",
+          fontSize: "1rem",
+          mb: 1,
+        }}
       >
         {title}
       </Typography>
       {loading ? (
-        <CircularProgress size={20} sx={{ color: color }} />
+        <CircularProgress size={32} sx={{ color: color }} />
       ) : (
-        <Typography variant="h4" sx={{ fontWeight: 600, color: "#1a1f36" }}>
+        <Typography variant="h3" sx={{ fontWeight: 600, color: "#1a1f36", fontSize: "2.5rem" }}>
           {value}
         </Typography>
       )}
@@ -389,31 +394,32 @@ const AdminDashboard = () => {
 
         {/* Stats Grid */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} sm={6} md={4}>
             <StatsCard
-              icon={<GroupIcon sx={{ fontSize: 24, color: "#8B0000" }} />}
+              icon={<GroupIcon sx={{ fontSize: 32, color: "#8B0000" }} />}
               title="Active Users"
               value={activeUsers}
               color="#8B0000"
               loading={loadingActiveUsers}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={6} md={8}>
             <Paper
               sx={{
-                p: 3,
+                p: 4,
                 borderRadius: 2,
                 bgcolor: "white",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
                 display: 'flex',
                 alignItems: 'center',
-                gap: 2
+                gap: 3,
+                height: '100%'
               }}
             >
               <Box
                 sx={{
-                  width: 45,
-                  height: 45,
+                  width: 60,
+                  height: 60,
                   borderRadius: 2,
                   bgcolor: '#FFF1F1',
                   display: 'flex',
@@ -421,25 +427,25 @@ const AdminDashboard = () => {
                   justifyContent: 'center'
                 }}
               >
-                <EventNoteIcon sx={{ fontSize: 24, color: "#8B0000" }} />
+                <EventNoteIcon sx={{ fontSize: 32, color: "#8B0000" }} />
               </Box>
               <Box>
                 <Typography
                   variant="body2"
                   sx={{
                     color: "#64748b",
-                    fontSize: "0.875rem",
-                    mb: 0.5
+                    fontSize: "1rem",
+                    mb: 1
                   }}
                 >
                   Total Consultations
                 </Typography>
                 <Typography
-                  variant="h4"
+                  variant="h3"
                   sx={{
                     fontWeight: 600,
                     color: "#1a1f36",
-                    fontSize: "2rem"
+                    fontSize: "2.5rem"
                   }}
                 >
                   {appointmentStats.confirmedAppointments || 15}
@@ -465,14 +471,16 @@ const AdminDashboard = () => {
         {/* Main Content Grid */}
         <Grid container spacing={3}>
           {/* Activity Chart */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={5}>
             <Paper
               sx={{
                 p: { xs: 3, md: 4 },
                 borderRadius: 2,
                 bgcolor: "white",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                height: "100%"
+                height: "100%",
+                width: "100%",
+                overflow: "hidden"
               }}
             >
               <Box
@@ -498,6 +506,7 @@ const AdminDashboard = () => {
                 sx={{
                   height: 400,
                   width: "100%",
+                  overflow: "auto"
                 }}
               >
                 {loading ? (
@@ -526,6 +535,7 @@ const AdminDashboard = () => {
                       }
                     ]}
                     height={400}
+                    width={800}
                     sx={{
                       ".MuiChartsAxis-bottom .MuiChartsAxis-tickLabel": {
                         fontSize: "0.75rem",
@@ -552,7 +562,7 @@ const AdminDashboard = () => {
           </Grid>
 
           {/* Calendar */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={7}>
             <Paper
               sx={{
                 p: { xs: 3, md: 4 },
@@ -560,6 +570,7 @@ const AdminDashboard = () => {
                 bgcolor: "white",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
                 height: "100%",
+                width: "100%",
                 "& .fc": {
                   height: "500px !important"
                 }
