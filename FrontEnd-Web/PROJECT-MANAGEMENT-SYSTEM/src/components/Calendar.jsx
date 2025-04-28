@@ -1,21 +1,30 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Typography, IconButton, Paper } from "@mui/material";
 import { ChevronLeft, ChevronRight } from "@mui/icons-material";
+import { useNavigate } from "react-router-dom";
+import appointmentService from "../services/appointmentService";
 
 const Calendar = () => {
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 2)); // March 2025
+  const navigate = useNavigate();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock booked dates
-  const bookedDates = [
-    "2025-03-05",
-    "2025-03-13",
-    "2025-03-15",
-    "2025-03-18",
-    "2025-03-20",
-    "2025-03-25",
-    "2025-03-29",
-    "2025-03-31",
-  ];
+  useEffect(() => {
+    fetchAppointments();
+  }, [currentDate]);
+
+  const fetchAppointments = async () => {
+    try {
+      setLoading(true);
+      const data = await appointmentService.getAllFacultyAppointments();
+      setAppointments(data);
+    } catch (err) {
+      console.error("Error fetching appointments:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const daysInMonth = new Date(
     currentDate.getFullYear(),
@@ -60,7 +69,18 @@ const Calendar = () => {
     const dateString = `${currentDate.getFullYear()}-${String(
       currentDate.getMonth() + 1
     ).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
-    return bookedDates.includes(dateString);
+    
+    return appointments.some(apt => {
+      const aptDate = new Date(apt.startTime._seconds * 1000);
+      return aptDate.toISOString().split('T')[0] === dateString;
+    });
+  };
+
+  const handleDateClick = (date) => {
+    const dateString = `${currentDate.getFullYear()}-${String(
+      currentDate.getMonth() + 1
+    ).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+    navigate(`/admin/schedule?date=${dateString}`);
   };
 
   const renderCalendarDays = () => {
@@ -96,6 +116,7 @@ const Calendar = () => {
       days.push(
         <Box
           key={i}
+          onClick={() => handleDateClick(i)}
           sx={{
             p: 2,
             textAlign: "center",
@@ -157,6 +178,10 @@ const Calendar = () => {
         borderRadius: 2,
         bgcolor: "white",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column"
       }}
     >
       {/* Calendar Header */}
@@ -175,7 +200,7 @@ const Calendar = () => {
       </Box>
 
       {/* Calendar Grid */}
-      <Box sx={{ mb: 2 }}>
+      <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <Box
           sx={{
             display: "grid",
@@ -198,6 +223,8 @@ const Calendar = () => {
           sx={{
             display: "grid",
             gridTemplateColumns: "repeat(7, 1fr)",
+            flex: 1,
+            minHeight: 0
           }}
         >
           {renderCalendarDays()}
