@@ -786,41 +786,29 @@ public class AppointmentController {
             
             var userDoc = userDocs.iterator().next();
             String userId = userDoc.getId();
-            logger.info("Found user ID: {}", userId);
+            String userRole = userDoc.getString("role");
+            logger.info("Found user ID: {} with role: {}", userId, userRole);
 
-            // Get user's appointments
-            var userAppointments = firestore.collection("user_appointments")
-                    .whereEqualTo("userId", userId)
-                    .get()
-                    .get();
-
-            logger.info("Found {} user appointments", userAppointments.size());
-
-            // Convert dates if provided
-            Timestamp startTimestamp = null;
-            Timestamp endTimestamp = null;
-            if (startDate != null && !startDate.isEmpty()) {
-                try {
-                    Instant start = Instant.parse(startDate);
-                    startTimestamp = Timestamp.ofTimeSecondsAndNanos(
-                        start.getEpochSecond(),
-                        start.getNano()
-                    );
-                    logger.info("Parsed start date: {} ({})", startTimestamp.toDate(), startTimestamp);
-                } catch (Exception e) {
-                    logger.error("Error parsing start date: {}", e.getMessage());
-                }
-            }
-            if (endDate != null && !endDate.isEmpty()) {
-                try {
-                    Instant end = Instant.parse(endDate);
-                    endTimestamp = Timestamp.ofTimeSecondsAndNanos(
-                        end.getEpochSecond(),
-                        end.getNano()
-                    );
-                    logger.info("Parsed end date: {} ({})", endTimestamp.toDate(), endTimestamp);
-                } catch (Exception e) {
-                    logger.error("Error parsing end date: {}", e.getMessage());
+            List<DocumentSnapshot> appointmentDocs;
+            if ("ADMIN".equals(userRole)) {
+                // Admin: export all appointments
+                appointmentDocs = new ArrayList<>(firestore.collection("appointments").get().get().getDocuments());
+            } else {
+                // Regular user: export only their appointments
+                var userAppointments = firestore.collection("user_appointments")
+                        .whereEqualTo("userId", userId)
+                        .get()
+                        .get();
+                appointmentDocs = new ArrayList<>();
+                for (var userAppointment : userAppointments) {
+                    String appointmentId = userAppointment.getString("appointmentId");
+                    var appointmentDoc = firestore.collection("appointments")
+                            .document(appointmentId)
+                            .get()
+                            .get();
+                    if (appointmentDoc.exists()) {
+                        appointmentDocs.add(appointmentDoc);
+                    }
                 }
             }
 
@@ -835,103 +823,87 @@ public class AppointmentController {
 
             int processedAppointments = 0;
             int skippedAppointments = 0;
-            for (var userAppointment : userAppointments) {
+            for (var appointmentDoc : appointmentDocs) {
                 try {
-                    String appointmentId = userAppointment.getString("appointmentId");
-                    logger.info("Processing appointment: {}", appointmentId);
+                    Timestamp appointmentStart = appointmentDoc.getTimestamp("startTime");
+                    Timestamp appointmentEnd = appointmentDoc.getTimestamp("endTime");
 
-                    var appointmentDoc = firestore.collection("appointments")
-                            .document(appointmentId)
-                            .get()
-                            .get();
-
-                    if (appointmentDoc.exists()) {
-                        Timestamp appointmentStart = appointmentDoc.getTimestamp("startTime");
-                        Timestamp appointmentEnd = appointmentDoc.getTimestamp("endTime");
-
-                        logger.info("Appointment {} time range: {} ({}) to {} ({})", 
-                            appointmentId, 
-                            appointmentStart.toDate(), appointmentStart,
-                            appointmentEnd.toDate(), appointmentEnd);
-
-                        // Apply date filter if dates are provided
-                        if (startTimestamp != null && endTimestamp != null) {
-                            // Skip if appointment ends before the start date or starts after the end date
-                            if (appointmentEnd.compareTo(startTimestamp) < 0 || appointmentStart.compareTo(endTimestamp) > 0) {
-                                logger.info("Appointment {} outside date range - Skipping", appointmentId);
+                    // Apply date filter if dates are provided
+                    if (startDate != null && !startDate.isEmpty()) {
+                        try {
+                            Instant start = Instant.parse(startDate);
+                            Timestamp startTimestamp = Timestamp.ofTimeSecondsAndNanos(
+                                start.getEpochSecond(),
+                                start.getNano()
+                            );
+                            if (appointmentEnd.compareTo(startTimestamp) < 0 || appointmentStart.compareTo(startTimestamp) > 0) {
                                 skippedAppointments++;
                                 continue;
                             }
-                        } else if (startTimestamp != null) {
-                            // Skip if appointment ends before start date
-                            boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
-                            logger.info("Start date check for appointment {}: isBeforeStartDate={}", 
-                                appointmentId, isBeforeStartDate);
-                            if (isBeforeStartDate) {
-                                logger.info("Appointment {} before start date - Skipping", appointmentId);
-                                skippedAppointments++;
-                                continue;
-                            }
-                        } else if (endTimestamp != null) {
-                            // Skip if appointment starts after end date
-                            boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
-                            logger.info("End date check for appointment {}: isAfterEndDate={}", 
-                                appointmentId, isAfterEndDate);
-                            if (isAfterEndDate) {
-                                logger.info("Appointment {} after end date - Skipping", appointmentId);
-                                skippedAppointments++;
-                                continue;
-                            }
+                        } catch (Exception e) {
+                            logger.error("Error parsing start date: {}", e.getMessage());
                         }
-
-                        // Get participant names
-                        List<String> participantIds = (List<String>) appointmentDoc.get("participants");
-                        List<String> participantNames = new ArrayList<>();
-                        if (participantIds != null) {
-                            for (String participantId : participantIds) {
-                                var participantDoc = firestore.collection("users")
-                                        .document(participantId)
-                                        .get()
-                                        .get();
-                                if (participantDoc.exists()) {
-                                    String name = participantDoc.getString("firstName") + " " + 
-                                                participantDoc.getString("lastName");
-                                    participantNames.add(name);
-                                }
-                            }
-                        }
-
-                        // Get tags
-                        List<Object> tags = (List<Object>) appointmentDoc.get("tags");
-                        List<String> tagNames = new ArrayList<>();
-                        if (tags != null) {
-                            for (Object tagObj : tags) {
-                                if (tagObj instanceof Map) {
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> tag = (Map<String, Object>) tagObj;
-                                    String tagName = (String) tag.get("name");
-                                    if (tagName != null) {
-                                        tagNames.add(tagName);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Format CSV line
-                        csv.append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("title"))))
-                           .append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("description"))))
-                           .append(String.format("\"%s\",", formatter.format(appointmentStart.toDate().toInstant())))
-                           .append(String.format("\"%s\",", formatter.format(appointmentEnd.toDate().toInstant())))
-                           .append(String.format("\"%s\",", appointmentDoc.getString("status")))
-                           .append(String.format("\"%s\",", escapeCsvField(String.join(", ", participantNames))))
-                           .append(String.format("\"%s\"\n", escapeCsvField(String.join(", ", tagNames))));
-
-                        processedAppointments++;
-                    } else {
-                        logger.warn("Appointment {} not found", appointmentId);
                     }
+                    if (endDate != null && !endDate.isEmpty()) {
+                        try {
+                            Instant end = Instant.parse(endDate);
+                            Timestamp endTimestamp = Timestamp.ofTimeSecondsAndNanos(
+                                end.getEpochSecond(),
+                                end.getNano()
+                            );
+                            if (appointmentEnd.compareTo(endTimestamp) < 0 || appointmentStart.compareTo(endTimestamp) > 0) {
+                                skippedAppointments++;
+                                continue;
+                            }
+                        } catch (Exception e) {
+                            logger.error("Error parsing end date: {}", e.getMessage());
+                        }
+                    }
+
+                    // Get participant names
+                    List<String> participantIds = (List<String>) appointmentDoc.get("participants");
+                    List<String> participantNames = new ArrayList<>();
+                    if (participantIds != null) {
+                        for (String participantId : participantIds) {
+                            var participantDoc = firestore.collection("users")
+                                    .document(participantId)
+                                    .get()
+                                    .get();
+                            if (participantDoc.exists()) {
+                                String name = participantDoc.getString("firstName") + " " + 
+                                            participantDoc.getString("lastName");
+                                participantNames.add(name);
+                            }
+                        }
+                    }
+
+                    // Get tags
+                    List<Object> tags = (List<Object>) appointmentDoc.get("tags");
+                    List<String> tagNames = new ArrayList<>();
+                    if (tags != null) {
+                        for (Object tagObj : tags) {
+                            if (tagObj instanceof Map) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> tag = (Map<String, Object>) tagObj;
+                                String tagName = (String) tag.get("name");
+                                if (tagName != null) {
+                                    tagNames.add(tagName);
+                                }
+                            }
+                        }
+                    }
+
+                    // Format CSV line
+                    csv.append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("title"))))
+                       .append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("description"))))
+                       .append(String.format("\"%s\",", formatter.format(appointmentStart.toDate().toInstant())))
+                       .append(String.format("\"%s\",", formatter.format(appointmentEnd.toDate().toInstant())))
+                       .append(String.format("\"%s\",", appointmentDoc.getString("status")))
+                       .append(String.format("\"%s\",", escapeCsvField(String.join(", ", participantNames))))
+                       .append(String.format("\"%s\"\n", escapeCsvField(String.join(", ", tagNames))));
+
+                    processedAppointments++;
                 } catch (Exception e) {
-                    logger.error("Error processing appointment: {}", e.getMessage());
                     // Continue processing other appointments
                     continue;
                 }
@@ -1069,7 +1041,7 @@ public class AppointmentController {
             
             if (userDocs.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-    }
+            }
 
             var userDoc = userDocs.iterator().next();
             String userId = userDoc.getId();
@@ -1100,7 +1072,7 @@ public class AppointmentController {
             // Update appointment
             appointmentDoc.getReference().update("tags", currentTags).get();
 
-        return ResponseEntity.ok().build();
+            return ResponseEntity.ok().build();
         } catch (Exception e) {
             logger.error("Error removing tag from appointment: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
