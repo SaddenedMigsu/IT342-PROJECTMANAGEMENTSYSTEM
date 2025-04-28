@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Update this URL to match your backend
-const API_BASE_URL = "https://it342pms.netlify.app/api/auth";
+const API_BASE_URL = "https://it342-projectmanagementsystem.onrender.com/api/auth";
 
 // Create an axios instance with default config
 const api = axios.create({

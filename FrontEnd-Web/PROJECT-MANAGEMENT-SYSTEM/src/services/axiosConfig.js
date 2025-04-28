@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: "https://it342pms.netlify.app/api",
+  baseURL: "https://it342-projectmanagementsystem.onrender.com/api",
   headers: {
     "Content-Type": "application/json",
   },
