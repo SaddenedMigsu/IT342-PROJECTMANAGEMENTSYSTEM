@@ -1,5 +1,7 @@
 package com.it342.projectmanagementsystem.models;
 
+import com.google.firebase.Timestamp;
+
 public class User {
     private String id;
     private String studId;
@@ -8,8 +10,8 @@ public class User {
     private String firstName;
     private String lastName;
     private String role;
-    private String createdAt;
-    private String updatedAt;
+    private Timestamp createdAt;
+    private Timestamp updatedAt;
 
     // Default constructor
     public User() {
@@ -17,7 +19,7 @@ public class User {
 
     // Parameterized constructor
     public User(String id, String studId, String email, String password, String firstName, 
-                String lastName, String role, String createdAt, String updatedAt) {
+                String lastName, String role, Timestamp createdAt, Timestamp updatedAt) {
         this.id = id;
         this.studId = studId;
         this.email = email;
@@ -86,19 +88,19 @@ public class User {
         this.role = role;
     }
 
-    public String getCreatedAt() {
+    public Timestamp getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(String createdAt) {
+    public void setCreatedAt(Timestamp createdAt) {
         this.createdAt = createdAt;
     }
 
-    public String getUpdatedAt() {
+    public Timestamp getUpdatedAt() {
         return updatedAt;
     }
 
-    public void setUpdatedAt(String updatedAt) {
+    public void setUpdatedAt(Timestamp updatedAt) {
         this.updatedAt = updatedAt;
     }
 } 

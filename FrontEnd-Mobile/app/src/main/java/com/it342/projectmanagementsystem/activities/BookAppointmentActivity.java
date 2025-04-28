@@ -11,6 +11,7 @@ import android.widget.AutoCompleteTextView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
@@ -33,6 +34,9 @@ import java.util.Locale;
 import java.util.TimeZone;
 import java.util.Map;
 import java.util.HashMap;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
 
 public class BookAppointmentActivity extends AppCompatActivity {
     private static final String TAG = "BookAppointmentActivity";
@@ -278,10 +282,19 @@ public class BookAppointmentActivity extends AppCompatActivity {
                             String errorBody = response.errorBody() != null ? 
                                 response.errorBody().string() : "Unknown error";
                             Log.e(TAG, "Failed to create appointment. Error: " + errorBody);
-                            Toast.makeText(BookAppointmentActivity.this,
-                                "Failed to create appointment: " + errorBody, Toast.LENGTH_LONG).show();
+                            
+                            // Try to parse the error as JSON to check for conflicts
+                            if (errorBody.contains("conflicts")) {
+                                handleConflictError(errorBody);
+                            } else {
+                                // Default error message for non-conflict errors
+                                Toast.makeText(BookAppointmentActivity.this,
+                                    "Failed to create appointment: " + errorBody, Toast.LENGTH_LONG).show();
+                            }
                         } catch (IOException e) {
                             Log.e(TAG, "Error reading error body", e);
+                            Toast.makeText(BookAppointmentActivity.this,
+                                "Failed to create appointment: Unknown error", Toast.LENGTH_LONG).show();
                         }
                     }
                 }
@@ -335,5 +348,97 @@ public class BookAppointmentActivity extends AppCompatActivity {
             return false;
         }
         return true;
+    }
+
+    private void handleConflictError(String errorBody) {
+        try {
+            JSONObject errorJson = new JSONObject(errorBody);
+            if (errorJson.has("conflicts")) {
+                JSONArray conflicts = errorJson.getJSONArray("conflicts");
+                if (conflicts.length() > 0) {
+                    // Get the first conflict
+                    JSONObject conflict = conflicts.getJSONObject(0);
+                    
+                    // Get conflict details
+                    String conflictingTitle = conflict.optString("conflictingTitle", "Unknown appointment");
+                    String conflictingStudent = conflict.optString("conflictingStudent", "Unknown student");
+                    
+                    // Get conflict times if available
+                    String timeInfo = "";
+                    if (conflict.has("conflictingStartTime")) {
+                        JSONObject startTime = conflict.getJSONObject("conflictingStartTime");
+                        JSONObject endTime = conflict.getJSONObject("conflictingEndTime");
+                        
+                        // Convert seconds to date format if needed
+                        long startSeconds = startTime.optLong("seconds", 0);
+                        long endSeconds = endTime.optLong("seconds", 0);
+                        
+                        Log.d(TAG, "Conflict timestamps - start seconds: " + startSeconds + ", end seconds: " + endSeconds);
+                        
+                        if (startSeconds > 0 && endSeconds > 0) {
+                            // Convert to readable time
+                            Calendar startCal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Manila"));
+                            Calendar endCal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Manila"));
+                            
+                            startCal.setTimeInMillis(startSeconds * 1000);
+                            endCal.setTimeInMillis(endSeconds * 1000);
+                            
+                            Log.d(TAG, "Raw start time: " + startCal.getTime());
+                            Log.d(TAG, "Raw end time: " + endCal.getTime());
+                            
+                            // Format just time for message display
+                            SimpleDateFormat timeFormat = new SimpleDateFormat("hh:mm a", Locale.getDefault());
+                            timeFormat.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
+                            
+                            String formattedStart = timeFormat.format(startCal.getTime());
+                            String formattedEnd = timeFormat.format(endCal.getTime());
+                            
+                            // Get date for the message
+                            SimpleDateFormat dateFormatter = new SimpleDateFormat("MMM dd, yyyy", Locale.getDefault());
+                            dateFormatter.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
+                            String dateString = dateFormatter.format(startCal.getTime());
+                            
+                            Log.d(TAG, "Formatted date: " + dateString);
+                            Log.d(TAG, "Formatted times - start: " + formattedStart + ", end: " + formattedEnd);
+                            
+                            timeInfo = " on " + dateString + " from " + formattedStart + " to " + formattedEnd;
+                        }
+                    }
+                    
+                    // Create a clean message
+                    String conflictMessage = "This appointment conflicts with \"" + conflictingTitle + "\"" + 
+                                            timeInfo + " with " + conflictingStudent + ".";
+                    
+                    // Show in a nice dialog
+                    new AlertDialog.Builder(this)
+                        .setTitle("Schedule Conflict")
+                        .setMessage(conflictMessage)
+                        .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                        .setIcon(android.R.drawable.ic_dialog_alert)
+                        .show();
+                    
+                    return;
+                }
+            }
+            
+            // Fallback for other conflict formats or if we couldn't parse specific details
+            new AlertDialog.Builder(this)
+                .setTitle("Schedule Conflict")
+                .setMessage("This appointment conflicts with an existing schedule. Please choose a different time.")
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show();
+            
+        } catch (JSONException e) {
+            Log.e(TAG, "Error parsing conflict JSON", e);
+            
+            // Fallback message if JSON parsing fails
+            new AlertDialog.Builder(this)
+                .setTitle("Schedule Conflict")
+                .setMessage("This appointment conflicts with an existing schedule. Please choose a different time.")
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show();
+        }
     }
 } 

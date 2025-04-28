@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -30,12 +31,16 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
     private Button btnAccept, btnReject;
     private ApiService apiService;
     private Appointment currentAppointment;
-    private SimpleDateFormat dateTimeFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
+    private SimpleDateFormat dateTimeFormat;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_appointment_request_details);
+
+        // Initialize the date format with Asia/Manila timezone
+        dateTimeFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
+        dateTimeFormat.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
 
         apiService = RetrofitClient.getInstance().getApiService();
         
