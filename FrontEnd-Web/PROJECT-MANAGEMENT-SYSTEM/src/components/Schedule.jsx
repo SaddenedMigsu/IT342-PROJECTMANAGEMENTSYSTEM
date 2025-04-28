@@ -41,6 +41,8 @@ const Schedule = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [noResultsFound, setNoResultsFound] = useState(false);
 
   useEffect(() => {
     // Get date from URL parameters
@@ -194,11 +196,49 @@ const Schedule = () => {
     });
   };
 
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    setNoResultsFound(false);
+    
+    if (query) {
+      const results = appointments.filter(apt => {
+        const searchLower = query.toLowerCase();
+        return (
+          apt.title?.toLowerCase().includes(searchLower) ||
+          apt.facultyName?.toLowerCase().includes(searchLower) ||
+          apt.creatorName?.toLowerCase().includes(searchLower) ||
+          apt.status?.toLowerCase().includes(searchLower)
+        );
+      });
+
+      setSearchResults(results);
+
+      if (results.length > 0) {
+        const firstAppointment = results[0];
+        const appointmentDate = new Date(firstAppointment.startTime._seconds * 1000);
+        setCurrentDate(appointmentDate);
+        setSelectedDate(appointmentDate);
+        setNoResultsFound(false);
+      } else {
+        setNoResultsFound(true);
+      }
+    } else {
+      setSearchResults([]);
+      setNoResultsFound(false);
+    }
+  };
+
   const filteredAppointments = appointments.filter(apt => {
-    const matchesSearch = searchQuery.toLowerCase() === '' || 
-      apt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.facultyName.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+    if (!searchQuery) return true;
+    
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      apt.title?.toLowerCase().includes(searchLower) ||
+      apt.facultyName?.toLowerCase().includes(searchLower) ||
+      apt.creatorName?.toLowerCase().includes(searchLower) ||
+      apt.status?.toLowerCase().includes(searchLower) ||
+      new Date(apt.startTime._seconds * 1000).toLocaleDateString().toLowerCase().includes(searchLower)
+    );
   });
 
   const handleDateClick = (date, dateAppointments) => {
@@ -296,7 +336,7 @@ const Schedule = () => {
             <TextField
               placeholder="Search appointments..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
               sx={{
                 flex: { xs: '1 1 100%', sm: '1 1 280px' },
                 maxWidth: { sm: 320 },
@@ -334,6 +374,18 @@ const Schedule = () => {
                 ),
               }}
             />
+            {noResultsFound && (
+              <Typography
+                sx={{
+                  color: "#ef4444",
+                  fontSize: "0.875rem",
+                  mt: 1,
+                  ml: 1,
+                }}
+              >
+                No appointments found matching your search
+              </Typography>
+            )}
           </Box>
 
           {/* Center: Month Navigation */}
@@ -454,6 +506,49 @@ const Schedule = () => {
           </Box>
         </Box>
 
+        {/* Search Results Summary */}
+        {searchQuery && searchResults.length > 0 && (
+          <Box
+            sx={{
+              mb: 3,
+              p: 2,
+              bgcolor: "rgba(139, 0, 0, 0.05)",
+              borderRadius: 2,
+              border: "1px solid rgba(139, 0, 0, 0.1)",
+            }}
+          >
+            <Typography
+              sx={{
+                color: "#8B0000",
+                fontWeight: 600,
+                mb: 1,
+              }}
+            >
+              Found {searchResults.length} appointment{searchResults.length !== 1 ? 's' : ''} matching "{searchQuery}"
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {searchResults.map((apt, index) => (
+                <Chip
+                  key={index}
+                  label={`${apt.title} - ${new Date(apt.startTime._seconds * 1000).toLocaleDateString()}`}
+                  onClick={() => {
+                    const appointmentDate = new Date(apt.startTime._seconds * 1000);
+                    setCurrentDate(appointmentDate);
+                    setSelectedDate(appointmentDate);
+                  }}
+                  sx={{
+                    bgcolor: 'rgba(139, 0, 0, 0.1)',
+                    color: '#8B0000',
+                    '&:hover': {
+                      bgcolor: 'rgba(139, 0, 0, 0.2)',
+                    },
+                  }}
+                />
+              ))}
+            </Box>
+          </Box>
+        )}
+
         {/* Calendar Grid */}
         <Paper
           elevation={0}
@@ -539,7 +634,13 @@ const Schedule = () => {
                   ).map((dayObj, index) => {
                     const date = dayObj.date;
                     const isCurrentMonth = dayObj.isCurrentMonth;
-                    const dayAppointments = getAppointmentsForDate(date);
+                    const dayAppointments = getAppointmentsForDate(date).filter(apt => 
+                      filteredAppointments.some(fApt => fApt.appointmentId === apt.appointmentId)
+                    );
+
+                    const hasSearchResult = dayAppointments.some(apt => 
+                      searchResults.some(result => result.appointmentId === apt.appointmentId)
+                    );
 
                     return (
                       <Box
@@ -551,7 +652,9 @@ const Schedule = () => {
                           p: 1.5,
                           border: "1px solid #E2E8F0",
                           borderRadius: "16px",
-                          bgcolor: isSelected(date)
+                          bgcolor: hasSearchResult
+                            ? "rgba(139, 0, 0, 0.05)"
+                            : isSelected(date)
                             ? "rgba(139, 0, 0, 0.03)"
                             : isToday(date)
                             ? "rgba(37, 99, 235, 0.03)"
