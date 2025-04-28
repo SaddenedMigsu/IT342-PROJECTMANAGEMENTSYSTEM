@@ -22,6 +22,7 @@ import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Date;
+import java.util.TimeZone;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -32,12 +33,16 @@ public class AppointmentRequestAdapter extends RecyclerView.Adapter<AppointmentR
     private List<Appointment> appointmentList;
     private Context context;
     private ApiService apiService;
-    private SimpleDateFormat dateTimeFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
+    private SimpleDateFormat dateTimeFormat;
 
     public AppointmentRequestAdapter(Context context, List<Appointment> appointmentList) {
         this.context = context;
         this.appointmentList = appointmentList;
         this.apiService = RetrofitClient.getInstance().getApiService(); // Initialize ApiService
+        
+        // Initialize date format with the correct timezone
+        this.dateTimeFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
+        this.dateTimeFormat.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
     }
 
     @NonNull

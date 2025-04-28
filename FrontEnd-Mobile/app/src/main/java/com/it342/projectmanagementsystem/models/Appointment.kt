@@ -69,7 +69,10 @@ data class Appointment(
     var facultyApprovals: Map<String, Boolean>? = null,
 
     @SerializedName("requiresApproval")
-    var requiresApproval: Boolean? = null
+    var requiresApproval: Boolean? = null,
+    
+    @SerializedName("tags")
+    var tags: Map<String, Tag>? = null
 ) : Parcelable {
     // Java interop methods
     @JvmName("getIdValue")
@@ -101,6 +104,14 @@ data class Appointment(
 
     @JvmName("getCreatorNameValue")
     fun getCreatorName() = creatorName
+    
+    @JvmName("getTagsValue")
+    fun getTags() = tags
+    
+    @JvmName("setTagsValue")
+    fun setTags(value: Map<String, Tag>) {
+        tags = value
+    }
 
     // Setter methods
     @JvmName("setTitleValue")
@@ -126,6 +137,42 @@ data class Appointment(
     @JvmName("setStatusValue")
     fun setStatus(value: String) {
         status = value
+    }
+    
+    @JvmName("setParticipantsValue")
+    fun setParticipants(value: List<String>) {
+        participants = value
+    }
+    
+    // Tag-related utilities
+    @JvmName("addTag")
+    fun addTag(name: String, tag: Tag) {
+        if (tags == null) {
+            tags = mutableMapOf()
+        }
+        (tags as MutableMap<String, Tag>)[name] = tag
+    }
+    
+    @JvmName("removeTag")
+    fun removeTag(name: String) {
+        if (tags != null) {
+            (tags as MutableMap<String, Tag>).remove(name)
+        }
+    }
+    
+    @JvmName("getTag")
+    fun getTag(name: String): Tag? {
+        return tags?.get(name)
+    }
+    
+    @JvmName("hasTag")
+    fun hasTag(name: String): Boolean {
+        return tags?.containsKey(name) ?: false
+    }
+    
+    @JvmName("getTagList")
+    fun getTagList(): List<Tag> {
+        return tags?.values?.toList() ?: listOf()
     }
 
     fun getRemainingTime(): String {
@@ -157,7 +204,10 @@ data class Appointment(
     fun getFormattedDateTime(): String {
         startTime?.let { timestamp ->
             val date = timestamp.toDate()
-            return SimpleDateFormat(DATE_FORMAT, Locale.getDefault()).format(date)
+            val formatter = SimpleDateFormat(DATE_FORMAT, Locale.getDefault()).apply {
+                timeZone = TimeZone.getTimeZone("Asia/Manila")
+            }
+            return formatter.format(date)
         } ?: run {
             return "Date not available"
         }

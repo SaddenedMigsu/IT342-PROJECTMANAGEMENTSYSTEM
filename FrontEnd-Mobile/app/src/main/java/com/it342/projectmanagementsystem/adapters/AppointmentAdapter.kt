@@ -16,7 +16,9 @@ import java.util.*
 class AppointmentAdapter(private var appointments: List<Appointment>) : 
     RecyclerView.Adapter<AppointmentAdapter.AppointmentViewHolder>() {
 
-    private val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
+    private val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone("Asia/Manila")
+    }
 
     inner class AppointmentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val tvTitle: TextView = itemView.findViewById(R.id.tvTitle)
