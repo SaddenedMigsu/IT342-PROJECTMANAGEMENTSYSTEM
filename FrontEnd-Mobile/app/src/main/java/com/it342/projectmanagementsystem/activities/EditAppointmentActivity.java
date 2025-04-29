@@ -21,6 +21,7 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
+import java.util.TimeZone;
 
 public class EditAppointmentActivity extends AppCompatActivity {
     private static final String TAG = "EditAppointment";
@@ -107,6 +108,7 @@ public class EditAppointmentActivity extends AppCompatActivity {
             etDescription.setText(currentAppointment.getDescription());
             
             SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
+            dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
             
             Timestamp startTimestamp = currentAppointment.getStartTime();
             if (startTimestamp != null) {
@@ -168,6 +170,7 @@ public class EditAppointmentActivity extends AppCompatActivity {
     private void updateTimeButton(Button button, Date date) {
         if (date != null) {
             SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
+            dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
             button.setText(dateFormat.format(date));
         }
     }
@@ -223,5 +226,22 @@ public class EditAppointmentActivity extends AppCompatActivity {
                     loadingDialog.dismiss();
                     Toast.makeText(this, "Failed to update appointment: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
+    }
+
+    // Helper methods for Date to Firebase Timestamp conversion
+    private Timestamp dateToFirebaseTimestamp(Date date) {
+        if (date == null) return null;
+        return new Timestamp(date.getTime() / 1000, 0);
+    }
+
+    private Date firebaseTimestampToDate(Timestamp timestamp) {
+        if (timestamp == null) return null;
+        return timestamp.toDate();
+    }
+
+    // Convert java.sql.Timestamp to Firebase Timestamp if needed
+    private Timestamp sqlTimestampToFirebaseTimestamp(java.sql.Timestamp sqlTimestamp) {
+        if (sqlTimestamp == null) return null;
+        return new Timestamp(sqlTimestamp.getTime() / 1000, 0);
     }
 } 

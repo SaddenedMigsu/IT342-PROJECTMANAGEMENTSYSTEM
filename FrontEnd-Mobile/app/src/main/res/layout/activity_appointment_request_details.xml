@@ -9,7 +9,7 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp"
+        android:padding="24dp"
         tools:context=".activities.AppointmentRequestDetailsActivity">
 
         <TextView
@@ -17,7 +17,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="Appointment Title"
-            android:textSize="22sp"
+            android:textSize="26sp"
             android:textStyle="bold"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -27,30 +27,72 @@
             android:id="@+id/tvDetailRequesterInfo"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="12dp"
             android:text="Requested by: [Student Name]"
-            android:textSize="16sp"
+            android:textSize="18sp"
             app:layout_constraintTop_toBottomOf="@id/tvDetailTitle"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
+        
+        <LinearLayout
+            android:id="@+id/actionButtonsLayout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp"
+            app:layout_constraintTop_toBottomOf="@id/tvDetailRequesterInfo"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRejectRequest"
+                android:layout_width="0dp"
+                android:layout_height="70dp"
+                android:layout_weight="1"
+                android:text="REJECT"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                app:cornerRadius="12dp"
+                app:elevation="6dp"
+                android:backgroundTint="@android:color/holo_red_light"
+                android:textColor="@android:color/white"
+                android:layout_marginEnd="8dp"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAcceptRequest"
+                android:layout_width="0dp"
+                android:layout_height="70dp"
+                android:layout_weight="1"
+                android:text="ACCEPT"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                app:cornerRadius="12dp"
+                app:elevation="6dp"
+                android:backgroundTint="@android:color/holo_green_light"
+                android:textColor="@android:color/white"
+                android:layout_marginStart="8dp"/>
+
+        </LinearLayout>
         
         <TextView
             android:id="@+id/tvDetailDescriptionLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="28dp"
             android:text="Description/Reason:"
+            android:textSize="18sp"
             android:textStyle="bold"
-            app:layout_constraintTop_toBottomOf="@id/tvDetailRequesterInfo"
+            app:layout_constraintTop_toBottomOf="@id/actionButtonsLayout"
             app:layout_constraintStart_toStartOf="parent" />
 
         <TextView
             android:id="@+id/tvDetailDescription"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="8dp"
             android:text="[Appointment Description]"
-            android:textSize="16sp"
+            android:textSize="18sp"
             app:layout_constraintTop_toBottomOf="@id/tvDetailDescriptionLabel"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
@@ -59,9 +101,9 @@
             android:id="@+id/tvDetailStatus"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="24dp"
             android:text="Status: PENDING_APPROVAL"
-            android:textSize="16sp"
+            android:textSize="18sp"
             android:textStyle="italic"
             app:layout_constraintTop_toBottomOf="@id/tvDetailDescription"
             app:layout_constraintStart_toStartOf="parent"
@@ -71,9 +113,9 @@
             android:id="@+id/tvDetailStartTime"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="16dp"
             android:text="Starts: [Start Time]"
-            android:textSize="16sp"
+            android:textSize="18sp"
             app:layout_constraintTop_toBottomOf="@id/tvDetailStatus"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
@@ -82,45 +124,12 @@
             android:id="@+id/tvDetailEndTime"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="8dp"
             android:text="Ends: [End Time]"
-            android:textSize="16sp"
+            android:textSize="18sp"
             app:layout_constraintTop_toBottomOf="@id/tvDetailStartTime"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="24dp"
-            app:layout_constraintTop_toBottomOf="@id/tvDetailEndTime"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintVertical_bias="1.0">
-
-            <Button
-                android:id="@+id/btnRejectRequest"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Reject"
-                android:backgroundTint="@android:color/holo_red_light"
-                android:textColor="@android:color/white"
-                android:layout_marginEnd="8dp"/>
-
-            <Button
-                android:id="@+id/btnAcceptRequest"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Accept"
-                android:backgroundTint="@android:color/holo_green_light"
-                 android:textColor="@android:color/white"
-                android:layout_marginStart="8dp"/>
-
-        </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </ScrollView> 

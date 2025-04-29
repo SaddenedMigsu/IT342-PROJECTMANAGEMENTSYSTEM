@@ -14,4 +14,20 @@
     <color name="text_light">#757575</color>
     <color name="maroon">#800000</color>
     <color name="gray">#757575</color>
+    
+    <!-- Appointment status colors -->
+    <color name="appointment_scheduled_bg">#E3F2FD</color>
+    <color name="appointment_scheduled_text">#0D47A1</color>
+    <color name="appointment_rejected_bg">#FFEBEE</color>
+    <color name="appointment_rejected_text">#B71C1C</color>
+    <color name="appointment_pending_bg">#FFF8E1</color>
+    <color name="appointment_pending_text">#E65100</color>
+    <color name="appointment_completed_bg">#CCFFCC</color>
+    <color name="appointment_completed_text">#006400</color>
+    <color name="appointment_default_bg">#E3F2FD</color>
+    <color name="appointment_default_text">#0D47A1</color>
+    
+    <!-- Keep for backward compatibility -->
+    <color name="appointment_accepted_bg">@color/appointment_scheduled_bg</color>
+    <color name="appointment_accepted_text">@color/appointment_scheduled_text</color>
 </resources>

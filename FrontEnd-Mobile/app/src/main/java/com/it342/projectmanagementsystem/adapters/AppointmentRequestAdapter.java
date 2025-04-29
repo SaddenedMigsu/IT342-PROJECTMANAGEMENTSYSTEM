@@ -67,14 +67,50 @@ public class AppointmentRequestAdapter extends RecyclerView.Adapter<AppointmentR
             Log.w(TAG, "Creator name is missing for appointment ID: " + appointment.getId());
         }
 
+        // Check if appointment is in the past (for COMPLETED status)
+        boolean isCompletedAppointment = false;
         if (appointment.getStartTime() != null) {
             Date startDate = appointment.getStartTime().toDate();
-            holder.tvTime.setText("Time: " + dateTimeFormat.format(startDate));
+            long startTimeMillis = startDate.getTime();
+            long currentTimeMillis = System.currentTimeMillis();
+            
+            if (startTimeMillis < currentTimeMillis) {
+                // Time has passed for this appointment
+                String status = appointment.getStatus();
+                if ("SCHEDULED".equalsIgnoreCase(status) || "ACCEPTED".equalsIgnoreCase(status)) {
+                    isCompletedAppointment = true;
+                    holder.tvTime.setText("Time: " + dateTimeFormat.format(startDate) + " (Completed)");
+                } else {
+                    holder.tvTime.setText("Time: " + dateTimeFormat.format(startDate) + " (Time has passed)");
+                }
+            } else {
+                holder.tvTime.setText("Time: " + dateTimeFormat.format(startDate));
+            }
         } else {
             holder.tvTime.setText("Time: Not set");
         }
 
-        holder.tvStatus.setText("Status: " + appointment.getStatus());
+        // Format status string and set color based on status
+        String status = appointment.getStatus();
+        String displayStatus;
+        
+        if (isCompletedAppointment) {
+            displayStatus = "Completed";
+        } else {
+            displayStatus = formatStatusForDisplay(status);
+        }
+        
+        holder.tvStatus.setText("Status: " + displayStatus);
+        
+        // Set text color based on status
+        int textColorResId;
+        if (isCompletedAppointment) {
+            textColorResId = R.color.appointment_completed_text;
+        } else {
+            textColorResId = getTextColorForStatus(status);
+        }
+        
+        holder.tvStatus.setTextColor(context.getResources().getColor(textColorResId));
 
         holder.btnViewDetails.setOnClickListener(v -> {
             Intent intent = new Intent(context, AppointmentRequestDetailsActivity.class);
@@ -99,6 +135,48 @@ public class AppointmentRequestAdapter extends RecyclerView.Adapter<AppointmentR
             tvTime = itemView.findViewById(R.id.tvAppointmentTime);
             tvStatus = itemView.findViewById(R.id.tvAppointmentStatus);
             btnViewDetails = itemView.findViewById(R.id.btnViewDetails);
+        }
+    }
+
+    /**
+     * Format the status string for user-friendly display
+     */
+    private String formatStatusForDisplay(String status) {
+        if (status == null) return "Unknown";
+        
+        switch (status.toUpperCase()) {
+            case "PENDING_APPROVAL":
+                return "Pending Approval";
+            case "SCHEDULED":
+            case "ACCEPTED":
+                return "Scheduled";
+            case "REJECTED":
+                return "Rejected";
+            case "COMPLETED":
+                return "Completed";
+            default:
+                return status.replace("_", " ");
+        }
+    }
+    
+    /**
+     * Get the color resource ID for a specific status
+     */
+    private int getTextColorForStatus(String status) {
+        if (status == null) return R.color.text_light;
+        
+        switch (status.toUpperCase()) {
+            case "PENDING_APPROVAL":
+                return R.color.appointment_pending_text;
+            case "SCHEDULED":
+            case "ACCEPTED":  // Treat ACCEPTED as SCHEDULED for consistency
+                return R.color.appointment_scheduled_text;
+            case "REJECTED":
+                return R.color.appointment_rejected_text;
+            case "COMPLETED":
+                return R.color.appointment_completed_text;
+            default:
+                return R.color.text_dark;
         }
     }
 } 

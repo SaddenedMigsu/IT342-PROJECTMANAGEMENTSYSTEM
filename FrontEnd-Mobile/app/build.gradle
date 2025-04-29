@@ -3,6 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'com.google.gms.google-services'
     id 'kotlin-parcelize'
+    id 'kotlin-kapt'
 }
 
 android {
@@ -31,6 +32,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = '17'
+        freeCompilerArgs = [
+            "-Xjvm-default=all",
+            "-Xsam-conversions=class"
+        ]
     }
     buildFeatures {
         viewBinding true
@@ -56,6 +61,9 @@ dependencies {
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3'
+    
+    // Calendar View - Use alternative calendar library
+    implementation 'com.applandeo:material-calendar-view:1.9.0'
     
     // Firebase dependencies
     implementation platform('com.google.firebase:firebase-bom:32.7.3')

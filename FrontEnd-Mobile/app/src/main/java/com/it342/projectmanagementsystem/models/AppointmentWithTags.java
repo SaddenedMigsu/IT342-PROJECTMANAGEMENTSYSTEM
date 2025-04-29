@@ -8,6 +8,11 @@ import java.util.Map;
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.Exclude;
+import com.google.firebase.firestore.DocumentId;
+import com.google.firebase.firestore.IgnoreExtraProperties;
+
+// Import the Kotlin Tag class specifically
+import com.it342.projectmanagementsystem.models.Tag;
 
 public class AppointmentWithTags {
     private String id;
@@ -124,27 +129,28 @@ public class AppointmentWithTags {
         this.tags = tags;
     }
 
-    public void addTag(String name, Tag tag) {
+    // Custom method suffix to avoid conflicts with Kotlin implementation
+    public void addTagJava(String name, Tag tag) {
         if (this.tags == null) {
             this.tags = new HashMap<>();
         }
         this.tags.put(name, tag);
     }
 
-    public void removeTag(String name) {
+    public void removeTagJava(String name) {
         if (this.tags != null) {
             this.tags.remove(name);
         }
     }
 
-    public Tag getTag(String name) {
+    public Tag getTagJava(String name) {
         if (this.tags != null) {
             return this.tags.get(name);
         }
         return null;
     }
 
-    public boolean hasTag(String name) {
+    public boolean hasTagJava(String name) {
         return this.tags != null && this.tags.containsKey(name);
     }
 

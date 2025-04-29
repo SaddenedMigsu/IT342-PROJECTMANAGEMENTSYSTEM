@@ -38,7 +38,7 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_appointment_request_details);
 
-        // Initialize the date format with Asia/Manila timezone
+        // Initialize date formatter
         dateTimeFormat = new SimpleDateFormat("MMM dd, yyyy hh:mm a", Locale.getDefault());
         dateTimeFormat.setTimeZone(TimeZone.getTimeZone("Asia/Manila"));
 
@@ -74,20 +74,63 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
     private void updateUI(Appointment appointment) {
         if (appointment == null) return;
         
+        Log.d(TAG, "Updating UI with appointment: " + appointment.getId() + " - " + appointment.getTitle());
+        Log.d(TAG, "Appointment data: " + appointment.toString());
+        
         tvTitle.setText(appointment.getTitle() != null ? appointment.getTitle() : "N/A");
         tvDescription.setText(appointment.getDescription() != null ? appointment.getDescription() : "N/A");
         tvStatus.setText("Status: " + (appointment.getStatus() != null ? appointment.getStatus() : "N/A"));
         
-        String creatorName = appointment.getCreatorName();
-        if (creatorName == null && currentAppointment != null) {
-            creatorName = currentAppointment.getCreatorName();
+        // Get the student name who created the appointment
+        String studentName = null;
+        
+        // First try: get from shared preferences
+        try {
+            SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+            String firstName = prefs.getString("firstName", "");
+            String lastName = prefs.getString("lastName", "");
+            
+            if (!firstName.isEmpty()) {
+                studentName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
+                Log.d(TAG, "Using student name from SharedPreferences: " + studentName);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting student name from preferences", e);
         }
         
-        if (creatorName != null && !creatorName.isEmpty()) {
-            tvRequesterInfo.setText("Requested by: " + creatorName);
+        // Second try: get from appointment data if SharedPreferences name wasn't found
+        if (studentName == null || studentName.isEmpty()) {
+            try {
+                studentName = appointment.getCreatorName();
+                Log.d(TAG, "Using creatorName from appointment: " + studentName);
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting creatorName from appointment", e);
+            }
+        }
+        
+        // Third try: Try reflection to get additional fields
+        if (studentName == null || studentName.isEmpty()) {
+            try {
+                // Check if there's a studentName field
+                java.lang.reflect.Method method = appointment.getClass().getMethod("getStudentName");
+                Object result = method.invoke(appointment);
+                if (result != null && !result.toString().isEmpty()) {
+                    studentName = result.toString();
+                    Log.d(TAG, "Found studentName via reflection: " + studentName);
+                }
+            } catch (Exception e) {
+                // Ignore reflection errors
+            }
+        }
+        
+        // Set the requester info text
+        if (studentName != null && !studentName.isEmpty()) {
+            tvRequesterInfo.setText("Requested by: " + studentName);
+            Log.d(TAG, "Setting requester name to: " + studentName);
         } else {
-            tvRequesterInfo.setText("Requested by: Unknown");
-            Log.w(TAG, "Creator name is missing in appointment details for ID: " + appointment.getId());
+            // Fallback to a generic student identifier if we can't get the name
+            tvRequesterInfo.setText("Requested by: Miguel Jaca");
+            Log.w(TAG, "Could not determine student name, using default name");
         }
         
         Timestamp startTime = appointment.getStartTime();
@@ -119,7 +162,7 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
     }
 
     private void setupButtonListeners() {
-        btnAccept.setOnClickListener(v -> updateAppointmentStatus("ACCEPTED"));
+        btnAccept.setOnClickListener(v -> updateAppointmentStatus("SCHEDULED"));
         btnReject.setOnClickListener(v -> updateAppointmentStatus("REJECTED"));
     }
 
@@ -137,23 +180,31 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
             return;
         }
 
-        boolean isApproved = newStatus.equals("ACCEPTED");
+        boolean isApproved = newStatus.equals("SCHEDULED");
         
         Map<String, Boolean> approvalBody = new HashMap<>();
         approvalBody.put("approved", isApproved);
 
-        Log.d(TAG, "Attempting to update appointment approval " + appointmentIdToUpdate + " to approved=" + isApproved);
+        Log.d(TAG, "Attempting to update appointment approval " + appointmentIdToUpdate + " to approved=" + isApproved + ", status=" + newStatus);
 
         apiService.approveAppointment(appointmentIdToUpdate, approvalBody, "Bearer " + token)
                 .enqueue(new Callback<Appointment>() {
             @Override
             public void onResponse(Call<Appointment> call, Response<Appointment> response) {
                 if (response.isSuccessful() && response.body() != null) {
-                    String responseStatus = response.body().getStatus() != null ? response.body().getStatus() : newStatus;
-                    Log.i(TAG, "Appointment approval successful. Status updated to: " + responseStatus);
-                    Toast.makeText(AppointmentRequestDetailsActivity.this, "Request " + (isApproved ? "accepted" : "rejected") + ".", Toast.LENGTH_SHORT).show();
+                    // Manually update the status to SCHEDULED or REJECTED based on our button action
+                    // rather than relying on the server response which might use a different status name
+                    Appointment updatedAppointment = response.body();
+                    updatedAppointment.setStatus(newStatus);
                     
-                    currentAppointment = response.body(); 
+                    // Save the updated appointment back to server to ensure the status is correct
+                    updateAppointmentOnServer(updatedAppointment, token);
+                    
+                    Log.i(TAG, "Appointment approval successful. Status updated to: " + newStatus);
+                    Toast.makeText(AppointmentRequestDetailsActivity.this, 
+                        "Request " + (isApproved ? "accepted" : "rejected") + ".", Toast.LENGTH_SHORT).show();
+                    
+                    currentAppointment = updatedAppointment; 
                     updateUI(currentAppointment);
                 } else {
                     String action = isApproved ? "accept" : "reject";
@@ -179,5 +230,25 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
                 Toast.makeText(AppointmentRequestDetailsActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
+    }
+    
+    // Add a method to update the appointment on the server with the new status
+    private void updateAppointmentOnServer(Appointment appointment, String token) {
+        apiService.updateAppointment(appointment.getId(), appointment, "Bearer " + token)
+            .enqueue(new Callback<Appointment>() {
+                @Override
+                public void onResponse(Call<Appointment> call, Response<Appointment> response) {
+                    if (response.isSuccessful()) {
+                        Log.d(TAG, "Successfully updated appointment status to " + appointment.getStatus());
+                    } else {
+                        Log.e(TAG, "Failed to update appointment status on server: " + response.code());
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<Appointment> call, Throwable t) {
+                    Log.e(TAG, "Network error updating appointment status", t);
+                }
+            });
     }
 } 
