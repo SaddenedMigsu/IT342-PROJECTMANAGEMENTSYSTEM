@@ -766,12 +766,12 @@ public class AppointmentController {
     // 8. Export Appointment Summary
     @GetMapping(value = "/export", produces = "text/csv")
     public ResponseEntity<byte[]> exportAppointments(
-                                              @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             Authentication authentication) {
         try {
             String userEmail = authentication.getName();
-            logger.info("Exporting appointments for user: {} between {} and {}", userEmail, startDate, endDate);
+            logger.info("Exporting all appointments (ADMIN only) for user: {} between {} and {}", userEmail, startDate, endDate);
 
             // Get user document
             var userDocs = firestore.collection("users")
@@ -785,16 +785,19 @@ public class AppointmentController {
             }
             
             var userDoc = userDocs.iterator().next();
-            String userId = userDoc.getId();
-            logger.info("Found user ID: {}", userId);
+            String userRole = userDoc.getString("role");
+            if (!"ADMIN".equals(userRole)) {
+                logger.error("Unauthorized export attempt by non-admin user: {}", userEmail);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
 
-            // Get user's appointments
-            var userAppointments = firestore.collection("user_appointments")
-                    .whereEqualTo("userId", userId)
+            // Get all appointments
+            var appointments = firestore.collection("appointments")
                     .get()
-                    .get();
+                    .get()
+                    .getDocuments();
 
-            logger.info("Found {} user appointments", userAppointments.size());
+            logger.info("Found {} total appointments", appointments.size());
 
             // Convert dates if provided
             Timestamp startTimestamp = null;
@@ -835,111 +838,75 @@ public class AppointmentController {
 
             int processedAppointments = 0;
             int skippedAppointments = 0;
-            for (var userAppointment : userAppointments) {
+            for (var appointmentDoc : appointments) {
                 try {
-                    String appointmentId = userAppointment.getString("appointmentId");
-                    logger.info("Processing appointment: {}", appointmentId);
+                    Timestamp appointmentStart = appointmentDoc.getTimestamp("startTime");
+                    Timestamp appointmentEnd = appointmentDoc.getTimestamp("endTime");
 
-                    var appointmentDoc = firestore.collection("appointments")
-                            .document(appointmentId)
-                            .get()
-                            .get();
-
-                    if (appointmentDoc.exists()) {
-                        Timestamp appointmentStart = appointmentDoc.getTimestamp("startTime");
-                        Timestamp appointmentEnd = appointmentDoc.getTimestamp("endTime");
-
-                        logger.info("Appointment {} time range: {} ({}) to {} ({})", 
-                            appointmentId, 
-                            appointmentStart.toDate(), appointmentStart,
-                            appointmentEnd.toDate(), appointmentEnd);
-
-                        // Apply date filter if dates are provided
-                        // Check if appointment falls within the date range
-                        if (startTimestamp != null && endTimestamp != null) {
-                            // Log comparison results
-                            boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
-                            boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
-                            
-                            logger.info("Date range check for appointment {}: isAfterEndDate={}, isBeforeStartDate={}", 
-                                appointmentId, isAfterEndDate, isBeforeStartDate);
-                            
-                            // Skip if appointment starts after end date or ends before start date
-                            if (isAfterEndDate || isBeforeStartDate) {
-                                logger.info("Appointment {} outside date range - Skipping", appointmentId);
-                                skippedAppointments++;
-                                continue;
-                            }
-                        } else if (startTimestamp != null) {
-                            // Skip if appointment ends before start date
-                            boolean isBeforeStartDate = appointmentEnd.compareTo(startTimestamp) < 0;
-                            logger.info("Start date check for appointment {}: isBeforeStartDate={}", 
-                                appointmentId, isBeforeStartDate);
-                            
-                            if (isBeforeStartDate) {
-                                logger.info("Appointment {} before start date - Skipping", appointmentId);
-                                skippedAppointments++;
-                                continue;
-                            }
-                        } else if (endTimestamp != null) {
-                            // Skip if appointment starts after end date
-                            boolean isAfterEndDate = appointmentStart.compareTo(endTimestamp) > 0;
-                            logger.info("End date check for appointment {}: isAfterEndDate={}", 
-                                appointmentId, isAfterEndDate);
-                            
-                            if (isAfterEndDate) {
-                                logger.info("Appointment {} after end date - Skipping", appointmentId);
-                                skippedAppointments++;
-                                continue;
-                            }
+                    // Apply date filter if dates are provided
+                    if (startTimestamp != null && endTimestamp != null) {
+                        // Skip if appointment ends before the start date or starts after the end date
+                        if (appointmentEnd.compareTo(startTimestamp) < 0 || appointmentStart.compareTo(endTimestamp) > 0) {
+                            skippedAppointments++;
+                            continue;
                         }
-
-                        // Get participant names
-                        List<String> participantIds = (List<String>) appointmentDoc.get("participants");
-                        List<String> participantNames = new ArrayList<>();
-                        if (participantIds != null) {
-                            for (String participantId : participantIds) {
-                                var participantDoc = firestore.collection("users")
-                                        .document(participantId)
-                                        .get()
-                                        .get();
-                                if (participantDoc.exists()) {
-                                    String name = participantDoc.getString("firstName") + " " + 
-                                                participantDoc.getString("lastName");
-                                    participantNames.add(name);
-                                }
-                            }
+                    } else if (startTimestamp != null) {
+                        // Skip if appointment ends before start date
+                        if (appointmentEnd.compareTo(startTimestamp) < 0) {
+                            skippedAppointments++;
+                            continue;
                         }
-
-                        // Get tags
-                        List<Object> tags = (List<Object>) appointmentDoc.get("tags");
-                        List<String> tagNames = new ArrayList<>();
-                        if (tags != null) {
-                            for (Object tagObj : tags) {
-                                if (tagObj instanceof Map) {
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> tag = (Map<String, Object>) tagObj;
-                                    String tagName = (String) tag.get("name");
-                                    if (tagName != null) {
-                                        tagNames.add(tagName);
-                                    }
-                                }
-                            }
+                    } else if (endTimestamp != null) {
+                        // Skip if appointment starts after end date
+                        if (appointmentStart.compareTo(endTimestamp) > 0) {
+                            skippedAppointments++;
+                            continue;
                         }
-
-                        // Format CSV line
-                        csv.append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("title"))))
-                           .append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("description"))))
-                           .append(String.format("\"%s\",", formatter.format(appointmentStart.toDate().toInstant())))
-                           .append(String.format("\"%s\",", formatter.format(appointmentEnd.toDate().toInstant())))
-                           .append(String.format("\"%s\",", appointmentDoc.getString("status")))
-                           .append(String.format("\"%s\",", escapeCsvField(String.join(", ", participantNames))))
-                           .append(String.format("\"%s\"\n", escapeCsvField(String.join(", ", tagNames))));
-
-                        processedAppointments++;
-                    } else {
-                        logger.warn("Appointment {} not found", appointmentId);
                     }
+
+                    // Get participant names
+                    List<String> participantIds = (List<String>) appointmentDoc.get("participants");
+                    List<String> participantNames = new ArrayList<>();
+                    if (participantIds != null) {
+                        for (String participantId : participantIds) {
+                            var participantDoc = firestore.collection("users")
+                                    .document(participantId)
+                                    .get()
+                                    .get();
+                            if (participantDoc.exists()) {
+                                String name = participantDoc.getString("firstName") + " " + 
+                                            participantDoc.getString("lastName");
+                                participantNames.add(name);
+                            }
+                        }
+                    }
+
+                    // Get tags
+                    List<Object> tags = (List<Object>) appointmentDoc.get("tags");
+                    List<String> tagNames = new ArrayList<>();
+                    if (tags != null) {
+                        for (Object tagObj : tags) {
+                            if (tagObj instanceof Map) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> tag = (Map<String, Object>) tagObj;
+                                String tagName = (String) tag.get("name");
+                                if (tagName != null) {
+                                    tagNames.add(tagName);
+                                }
+                            }
+                        }
+                    }
+
+                    // Format CSV line
+                    csv.append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("title"))))
+                       .append(String.format("\"%s\",", escapeCsvField(appointmentDoc.getString("description"))))
+                       .append(String.format("\"%s\",", formatter.format(appointmentStart.toDate().toInstant())))
+                       .append(String.format("\"%s\",", formatter.format(appointmentEnd.toDate().toInstant())))
+                       .append(String.format("\"%s\",", appointmentDoc.getString("status")))
+                       .append(String.format("\"%s\",", escapeCsvField(String.join(", ", participantNames))))
+                       .append(String.format("\"%s\"\n", escapeCsvField(String.join(", ", tagNames))));
+
+                    processedAppointments++;
                 } catch (Exception e) {
                     logger.error("Error processing appointment: {}", e.getMessage());
                     // Continue processing other appointments
@@ -1079,7 +1046,7 @@ public class AppointmentController {
             
             if (userDocs.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-    }
+            }
 
             var userDoc = userDocs.iterator().next();
             String userId = userDoc.getId();
@@ -1110,7 +1077,7 @@ public class AppointmentController {
             // Update appointment
             appointmentDoc.getReference().update("tags", currentTags).get();
 
-        return ResponseEntity.ok().build();
+            return ResponseEntity.ok().build();
         } catch (Exception e) {
             logger.error("Error removing tag from appointment: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();

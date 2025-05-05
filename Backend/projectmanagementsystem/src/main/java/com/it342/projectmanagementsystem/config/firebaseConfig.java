@@ -10,8 +10,10 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 @Configuration
 public class firebaseConfig {
@@ -22,11 +24,11 @@ public class firebaseConfig {
     public Firestore firestore() throws IOException {
         if (firestoreInstance == null) {
             if (FirebaseApp.getApps().isEmpty()) {
-                InputStream serviceAccount = getClass().getClassLoader().getResourceAsStream("serviceAccountKey.json");
-
-                if (serviceAccount == null) {
-                    throw new IOException("Service Account Key file not found in resources!");
+                String firebaseConfig = System.getenv("FIREBASE_CONFIG");
+                if (firebaseConfig == null) {
+                    throw new IOException("FIREBASE_CONFIG environment variable not set!");
                 }
+                InputStream serviceAccount = new ByteArrayInputStream(firebaseConfig.getBytes(StandardCharsets.UTF_8));
 
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
