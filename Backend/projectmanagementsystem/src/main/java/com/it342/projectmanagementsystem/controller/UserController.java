@@ -131,6 +131,86 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
     	return ResponseEntity.ok("Test Get Endpoint is WORKING!!!");
     }
 
+    // Admin update user details and reset password
+    @PutMapping("/admin/users/{id}")
+    public ResponseEntity<?> adminUpdateUser(
+            @PathVariable String id, 
+            @RequestBody Map<String, Object> updates,
+            Authentication authentication) {
+        try {
+            String adminEmail = authentication.getName();
+            logger.info("Admin {} attempting to update user: {}", adminEmail, id);
+
+            // Check if this is a password reset request
+            boolean isPasswordReset = updates.containsKey("resetPassword") && 
+                                     (Boolean.TRUE.equals(updates.get("resetPassword")) || 
+                                      "true".equals(updates.get("resetPassword")));
+            
+            // If this is a password reset request
+            if (isPasswordReset) {
+                String result = userService.adminResetUserPassword(id, adminEmail);
+                logger.info("Password successfully reset for user {} by admin {}", id, adminEmail);
+                return ResponseEntity.ok(Map.of("message", result));
+            }
+
+            // Otherwise, it's a regular update
+            Map<String, Object> allowedUpdates = new HashMap<>();
+            if (updates.containsKey("firstName")) allowedUpdates.put("firstName", updates.get("firstName"));
+            if (updates.containsKey("lastName")) allowedUpdates.put("lastName", updates.get("lastName"));
+            if (updates.containsKey("email")) allowedUpdates.put("email", updates.get("email"));
+            if (updates.containsKey("role")) allowedUpdates.put("role", updates.get("role"));
+
+            // Only proceed if there are fields to update
+            if (!allowedUpdates.isEmpty()) {
+                // Call service method for admin update
+                Map<String, Object> updatedUser = userService.adminUpdateUser(id, adminEmail, allowedUpdates, false);
+                logger.info("User {} successfully updated by admin {}", id, adminEmail);
+                return ResponseEntity.ok(updatedUser);
+            } else if (!isPasswordReset) {
+                // No fields to update and not a password reset
+                return ResponseEntity.badRequest().body("No valid fields to update");
+            } else {
+                // Was just a password reset which already returned
+                return ResponseEntity.ok().build();
+            }
+        } catch (IllegalArgumentException e) {
+            logger.error("Bad request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (SecurityException e) {
+            logger.error("Unauthorized access attempt: {}", e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error updating user: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SC_INTERNAL_SERVER_ERROR).body("Update failed: " + e.getMessage());
+        }
+    }
+
+    // Admin reset user password - keeping as a separate endpoint for API completeness
+    @PostMapping("/admin/users/{id}/reset-password")
+    public ResponseEntity<?> adminResetPassword(
+            @PathVariable String id,
+            Authentication authentication) {
+        try {
+            String adminEmail = authentication.getName();
+            logger.info("Admin {} attempting to reset password for user: {}", adminEmail, id);
+
+            // Call service method for password reset
+            String result = userService.adminResetUserPassword(id, adminEmail);
+
+            logger.info("Password successfully reset for user {} by admin {}", id, adminEmail);
+            return ResponseEntity.ok(Map.of("message", result));
+        } catch (IllegalArgumentException e) {
+            logger.error("Bad request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (SecurityException e) {
+            logger.error("Unauthorized access attempt: {}", e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error resetting password: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SC_INTERNAL_SERVER_ERROR).body("Password reset failed: " + e.getMessage());
+        }
+    }
+
     // Update User
     @PatchMapping("/{id}")
     public ResponseEntity<?> updateUser(@PathVariable String id, @RequestBody Map<String, Object> updates) {
