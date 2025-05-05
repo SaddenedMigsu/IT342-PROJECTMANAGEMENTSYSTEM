@@ -10,6 +10,12 @@ import {
   Avatar,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
 } from "@mui/material";
 import { BarChart } from "@mui/x-charts";
 import AdminLayout from "./AdminLayout";
@@ -19,6 +25,7 @@ import EventNoteIcon from "@mui/icons-material/EventNote";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import GroupIcon from "@mui/icons-material/Group";
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import appointmentService from "../services/appointmentService";
 import userService from "../services/userService";
 import ErrorBoundary from "./ErrorBoundary";
@@ -128,7 +135,7 @@ const StatsCard = ({ icon, title, value, color, loading = false }) => (
         width: 60,
         height: 60,
         borderRadius: 2,
-        bgcolor: `${color}15`,
+        bgcolor: '#FFF1F1',
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -296,6 +303,17 @@ const MostBookedFacultySection = () => {
   );
 };
 
+function downloadBlob(blob, filename) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 const AdminDashboard = () => {
   const [activeUsers, setActiveUsers] = useState(0);
   const [loadingActiveUsers, setLoadingActiveUsers] = useState(true);
@@ -310,6 +328,11 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [timeRange, setTimeRange] = useState("monthly");
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     const fetchActiveUsers = async () => {
@@ -368,6 +391,36 @@ const AdminDashboard = () => {
     fetchStats();
   }, []);
 
+  const handleExportExcel = async () => {
+    setExportError('');
+    if (!exportStartDate || !exportEndDate) {
+      setExportError('Please select both start and end dates.');
+      return;
+    }
+    setExportLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Not authenticated');
+      const url = `https://it342-projectmanagementsystem.onrender.com/api/appointments/export?startDate=${encodeURIComponent(exportStartDate)}&endDate=${encodeURIComponent(exportEndDate)}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) throw new Error('Failed to export data');
+      const blob = await response.blob();
+      downloadBlob(blob, 'consultations_export.csv');
+      setExportModalOpen(false);
+      setExportStartDate('');
+      setExportEndDate('');
+    } catch (err) {
+      setExportError(err.message || 'Export failed');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <Box
@@ -393,7 +446,7 @@ const AdminDashboard = () => {
         </Typography>
 
         {/* Stats Grid */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid container spacing={3} sx={{ mb: 4, alignItems: 'center' }}>
           <Grid item xs={12} sm={6} md={4}>
             <StatsCard
               icon={<GroupIcon sx={{ fontSize: 32, color: "#8B0000" }} />}
@@ -403,7 +456,7 @@ const AdminDashboard = () => {
               loading={loadingActiveUsers}
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={8}>
+          <Grid item xs={12} sm={6} md={8} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Paper
               sx={{
                 p: 4,
@@ -452,6 +505,114 @@ const AdminDashboard = () => {
                 </Typography>
               </Box>
             </Paper>
+            <Box sx={{ ml: { xs: 0, sm: 2 }, mt: { xs: 2, sm: 0 } }}>
+              <Button
+                variant="contained"
+                startIcon={<FileDownloadIcon sx={{ fontSize: 22 }} />}
+                onClick={() => setExportModalOpen(true)}
+                sx={{
+                  bgcolor: '#8B0000',
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  borderRadius: '16px',
+                  px: 3,
+                  py: 1.5,
+                  boxShadow: '0 4px 16px rgba(139,0,0,0.08)',
+                  textTransform: 'none',
+                  letterSpacing: 0,
+                  ml: { xs: 0, sm: 2 },
+                  mt: { xs: 2, sm: 0 },
+                  transition: 'background 0.2s, box-shadow 0.2s',
+                  '&:hover': {
+                    bgcolor: '#6B0000',
+                    boxShadow: '0 8px 24px rgba(139,0,0,0.12)'
+                  }
+                }}
+              >
+                Export Excel
+              </Button>
+              <Dialog open={exportModalOpen} onClose={() => setExportModalOpen(false)}>
+                <DialogTitle sx={{ fontWeight: 600, color: '#8B0000' }}>Export Consultations to CSV</DialogTitle>
+                <DialogContent
+                  sx={{
+                    minWidth: 350,
+                    bgcolor: '#fafbfc',
+                    borderRadius: 2,
+                    p: 3,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3
+                  }}
+                >
+                  <Typography sx={{ fontWeight: 600, color: '#1a1f36', mb: 1 }}>
+                    Select the date range to export consultations as CSV.
+                  </Typography>
+                  <Box>
+                    <Typography sx={{ fontWeight: 500, color: '#1a1f36', mb: 0.5 }}>
+                      Start Date
+                    </Typography>
+                    <TextField
+                      type="datetime-local"
+                      value={exportStartDate}
+                      onChange={e => setExportStartDate(e.target.value)}
+                      fullWidth
+                      sx={{
+                        '& .MuiInputBase-input': {
+                          fontSize: '1.1rem',
+                          padding: '18px 14px',
+                          minHeight: '32px'
+                        }
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                      placeholder="Select start date"
+                    />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontWeight: 500, color: '#1a1f36', mb: 0.5 }}>
+                      End Date
+                    </Typography>
+                    <TextField
+                      type="datetime-local"
+                      value={exportEndDate}
+                      onChange={e => setExportEndDate(e.target.value)}
+                      fullWidth
+                      sx={{
+                        '& .MuiInputBase-input': {
+                          fontSize: '1.1rem',
+                          padding: '18px 14px',
+                          minHeight: '32px'
+                        }
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                      placeholder="Select end date"
+                    />
+                  </Box>
+                  {exportError && (
+                    <Typography sx={{ color: '#ef4444', mt: 1 }}>{exportError}</Typography>
+                  )}
+                </DialogContent>
+                <DialogActions sx={{ px: 3, pb: 2 }}>
+                  <Button onClick={() => setExportModalOpen(false)} sx={{ color: '#64748B', textTransform: 'none' }}>Cancel</Button>
+                  <Button
+                    onClick={handleExportExcel}
+                    variant="contained"
+                    sx={{
+                      bgcolor: '#8B0000',
+                      color: 'white',
+                      '&:hover': { bgcolor: '#6B0000' },
+                      borderRadius: '12px',
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      px: 3
+                    }}
+                    disabled={exportLoading}
+                  >
+                    {exportLoading ? 'Exporting...' : 'Export'}
+                  </Button>
+                </DialogActions>
+              </Dialog>
+            </Box>
           </Grid>
         </Grid>
 

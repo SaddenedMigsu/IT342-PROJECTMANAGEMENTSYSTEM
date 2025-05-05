@@ -24,7 +24,7 @@ import {
   InputLabel,
   Checkbox,
 } from "@mui/material";
-import { Search, MoreVert, Delete } from "@mui/icons-material";
+import { Search, MoreVert, Delete, Edit } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
 import userService from "../services/userService";
 import authService from "../services/authService";
@@ -70,6 +70,9 @@ const Users = () => {
   const [deleteError, setDeleteError] = useState(null);
   const [availableRoles, setAvailableRoles] = useState(["All"]);
   const [imageLoadErrors, setImageLoadErrors] = useState({});
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState(null);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', role: '', password: '' });
 
   // Check authentication on component mount
   useEffect(() => {
@@ -210,6 +213,30 @@ const Users = () => {
       ...prev,
       [userId]: true
     }));
+  };
+
+  const handleEditClick = (user) => {
+    setUserToEdit(user);
+    // Split name into first and last for the form
+    const [firstName, ...lastNameArr] = user.name.split(' ');
+    setEditForm({
+      firstName: firstName || '',
+      lastName: lastNameArr.join(' ') || '',
+      email: user.email || '',
+      role: user.role || '',
+      password: ''
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditCancel = () => {
+    setEditDialogOpen(false);
+    setUserToEdit(null);
   };
 
   // Filter and sort users
@@ -847,6 +874,22 @@ const Users = () => {
                 <Box>
                   <IconButton
                     size="small"
+                    onClick={() => handleEditClick(user)}
+                    sx={{
+                      color: "#daa520",
+                      transition: 'all 0.2s ease',
+                      mr: 1,
+                      "&:hover": {
+                        bgcolor: "rgba(218, 165, 32, 0.12)",
+                        color: "#b8860b",
+                        transform: 'scale(1.1)'
+                      },
+                    }}
+                  >
+                    <Edit sx={{ fontSize: 20 }} />
+                  </IconButton>
+                  <IconButton
+                    size="small"
                     onClick={() => handleDeleteClick(user)}
                     sx={{
                       color: "#8B0000",
@@ -982,10 +1025,10 @@ const Users = () => {
             onClick={handleDeleteConfirm}
             variant="contained"
             sx={{
-              bgcolor: '#ef4444',
+              bgcolor: '#8B0000',
               color: 'white',
               '&:hover': {
-                bgcolor: '#dc2626',
+                bgcolor: '#6B0000',
               },
               borderRadius: '12px',
               textTransform: 'none',
@@ -994,6 +1037,109 @@ const Users = () => {
             }}
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={handleEditCancel}
+        PaperProps={{
+          sx: {
+            borderRadius: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: 2
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontSize: '1.25rem',
+            fontWeight: 600,
+            color: '#1a1f36',
+            pb: 1
+          }}
+        >
+          Edit User
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="dense"
+            label="First Name"
+            name="firstName"
+            value={editForm.firstName}
+            onChange={handleEditFormChange}
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Last Name"
+            name="lastName"
+            value={editForm.lastName}
+            onChange={handleEditFormChange}
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Email"
+            name="email"
+            value={editForm.email}
+            onChange={handleEditFormChange}
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel id="edit-role-label">Role</InputLabel>
+            <Select
+              labelId="edit-role-label"
+              name="role"
+              value={editForm.role}
+              label="Role"
+              onChange={handleEditFormChange}
+            >
+              <MenuItem value="FACULTY">FACULTY</MenuItem>
+              <MenuItem value="ADMIN">ADMIN</MenuItem>
+              <MenuItem value="STUDENT">STUDENT</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            onClick={handleEditCancel}
+            sx={{
+              color: '#64748B',
+              '&:hover': {
+                bgcolor: 'rgba(100, 116, 139, 0.1)',
+              },
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            sx={{
+              bgcolor: '#8B0000',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#6B0000',
+              },
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 500,
+              px: 3
+            }}
+            // onClick={handleEditSave} // To be implemented
+          >
+            Save
           </Button>
         </DialogActions>
       </Dialog>
