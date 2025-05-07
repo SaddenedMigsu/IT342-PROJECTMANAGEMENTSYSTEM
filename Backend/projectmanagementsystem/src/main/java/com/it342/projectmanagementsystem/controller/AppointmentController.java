@@ -361,12 +361,22 @@ public class AppointmentController {
             
             var userDoc = userDocs.iterator().next();
             String userId = userDoc.getId();
+            String updaterName = userDoc.getString("firstName") + " " + userDoc.getString("lastName");
 
             // Check if appointment exists and user has permission
             var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
             if (!appointmentDoc.exists() || !userId.equals(appointmentDoc.getString("createdBy"))) {
                 logger.error("Appointment not found or user does not have permission");
                 return ResponseEntity.notFound().build();
+            }
+
+            // Capture original values for change detection
+            String originalTitle = appointmentDoc.getString("title");
+            Timestamp originalStartTime = appointmentDoc.getTimestamp("startTime");
+            Timestamp originalEndTime = appointmentDoc.getTimestamp("endTime");
+            List<String> originalParticipants = (List<String>) appointmentDoc.get("participants");
+            if (originalParticipants == null) {
+                originalParticipants = new ArrayList<>();
             }
 
             // Validate time format
@@ -399,6 +409,79 @@ public class AppointmentController {
             appointment.setCreatedBy(userId);
             appointment.setParticipants(request.getParticipants());
             appointment.setStatus(appointmentDoc.getString("status"));
+            
+            // Check for significant changes
+            boolean timeChanged = !originalStartTime.equals(appointment.getStartTime()) || 
+                                 !originalEndTime.equals(appointment.getEndTime());
+            boolean titleChanged = !originalTitle.equals(request.getTitle());
+            
+            // If there are important changes, send notifications to all participants
+            if (timeChanged || titleChanged) {
+                List<String> allParticipants = new ArrayList<>(request.getParticipants());
+                // Remove the updater from notification recipients if they're in the list
+                allParticipants.remove(userId);
+                
+                // Format time for notification
+                ZoneId philippineZone = ZoneId.of("Asia/Manila");
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                        .withZone(philippineZone);
+                String formattedStartTime = formatter.format(startTime);
+                
+                // Prepare notification message
+                String notificationType = "APPOINTMENT_UPDATED";
+                String notificationTitle = "Appointment Updated";
+                StringBuilder messageBuilder = new StringBuilder("Appointment '").append(request.getTitle()).append("' has been updated");
+                
+                if (titleChanged) {
+                    messageBuilder.append(": title changed");
+                }
+                if (timeChanged) {
+                    messageBuilder.append(titleChanged ? ", " : ": ").append("time changed to ").append(formattedStartTime);
+                }
+                
+                String notificationMessage = messageBuilder.toString();
+                
+                // Send notifications to all participants except the updater
+                for (String participantId : allParticipants) {
+                    try {
+                        // Store notification in Firestore
+                        Map<String, Object> notificationData = new HashMap<>();
+                        notificationData.put("userId", participantId);
+                        notificationData.put("appointmentId", appointmentId);
+                        notificationData.put("type", notificationType);
+                        notificationData.put("title", notificationTitle);
+                        notificationData.put("message", notificationMessage);
+                        notificationData.put("status", "UNREAD");
+                        notificationData.put("createdAt", Timestamp.now());
+                        notificationData.put("details", Map.of(
+                            "title", request.getTitle(),
+                            "startTime", formattedStartTime,
+                            "updatedBy", updaterName
+                        ));
+                        
+                        // Save to Firestore
+                        firestore.collection("notifications").document().set(notificationData).get();
+                        
+                        // Send push notification
+                        Map<String, String> fcmData = new HashMap<>();
+                        fcmData.put("type", notificationType);
+                        fcmData.put("appointmentId", appointmentId);
+                        fcmData.put("startTime", formattedStartTime);
+                        
+                        notificationService.sendAppointmentNotification(
+                            participantId,
+                            notificationTitle,
+                            notificationMessage,
+                            fcmData
+                        );
+                        
+                        logger.info("Sent update notification to participant: {}", participantId);
+                    } catch (Exception e) {
+                        logger.error("Failed to send update notification to participant {}: {}", participantId, e.getMessage());
+                        // Continue with other participants even if one fails
+                    }
+                }
+            }
 
             logger.info("Successfully updated appointment: {}", appointmentId);
             return ResponseEntity.ok(appointment);
@@ -458,6 +541,7 @@ public class AppointmentController {
             }
 
             String userId = userDoc.getId();
+            String userFullName = userDoc.getString("firstName") + " " + userDoc.getString("lastName");
             
             // Get current participants
             List<String> currentParticipants = (List<String>) appointmentDoc.get("participants");
@@ -465,10 +549,25 @@ public class AppointmentController {
                 currentParticipants = new ArrayList<>();
             }
 
+            // Track newly added participants
+            List<String> newlyAddedParticipants = new ArrayList<>();
+            
             // Add new participants
             for (String participantId : request.getParticipantIds()) {
                 if (!currentParticipants.contains(participantId)) {
                     currentParticipants.add(participantId);
+                    newlyAddedParticipants.add(participantId);
+                    
+                    // Create user-appointment relationship for new participant
+                    Map<String, Object> participantRelationship = new HashMap<>();
+                    participantRelationship.put("userId", participantId);
+                    participantRelationship.put("appointmentId", appointmentId);
+                    participantRelationship.put("role", "PARTICIPANT");
+                    participantRelationship.put("status", "PENDING");
+                    participantRelationship.put("createdAt", Timestamp.now());
+                    participantRelationship.put("updatedAt", Timestamp.now());
+                    
+                    firestore.collection("user_appointments").document().set(participantRelationship).get();
                 }
             }
 
@@ -481,6 +580,58 @@ public class AppointmentController {
             firestore.collection("appointments").document(appointmentId).update(updates).get();
             logger.info("Successfully added {} participants to appointment {}", 
                     request.getParticipantIds().size(), appointmentId);
+
+            // Send notifications to newly added participants
+            if (!newlyAddedParticipants.isEmpty()) {
+                String appointmentTitle = appointmentDoc.getString("title");
+                Timestamp startTime = appointmentDoc.getTimestamp("startTime");
+                
+                // Format start time
+                ZoneId philippineZone = ZoneId.of("Asia/Manila");
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                        .withZone(philippineZone);
+                String formattedStartTime = formatter.format(startTime.toDate().toInstant());
+                
+                for (String participantId : newlyAddedParticipants) {
+                    try {
+                        // Store notification in Firestore
+                        Map<String, Object> notificationData = new HashMap<>();
+                        notificationData.put("userId", participantId);
+                        notificationData.put("appointmentId", appointmentId);
+                        notificationData.put("type", "PARTICIPANT_ADDED");
+                        notificationData.put("title", "New Appointment");
+                        notificationData.put("message", "You have been added to an appointment: " + appointmentTitle);
+                        notificationData.put("status", "UNREAD");
+                        notificationData.put("createdAt", Timestamp.now());
+                        notificationData.put("details", Map.of(
+                            "title", appointmentTitle,
+                            "startTime", formattedStartTime,
+                            "addedBy", userFullName
+                        ));
+                        
+                        // Save to Firestore
+                        firestore.collection("notifications").document().set(notificationData).get();
+                        
+                        // Send push notification
+                        Map<String, String> fcmData = new HashMap<>();
+                        fcmData.put("type", "PARTICIPANT_ADDED");
+                        fcmData.put("appointmentId", appointmentId);
+                        fcmData.put("startTime", formattedStartTime);
+                        
+                        notificationService.sendAppointmentNotification(
+                            participantId,
+                            "New Appointment",
+                            "You have been added to appointment: " + appointmentTitle + " at " + formattedStartTime,
+                            fcmData
+                        );
+                        
+                        logger.info("Sent notification to new participant: {}", participantId);
+                    } catch (Exception e) {
+                        logger.error("Failed to send notification to participant {}: {}", participantId, e.getMessage());
+                        // Continue with other participants even if one fails
+                    }
+                }
+            }
 
             // Create response
             Appointment appointment = new Appointment();
@@ -522,6 +673,8 @@ public class AppointmentController {
             }
             
             var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+            String removerName = userDoc.getString("firstName") + " " + userDoc.getString("lastName");
 
             // Check if appointment exists
             var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
@@ -536,7 +689,15 @@ public class AppointmentController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
 
-            String userId = userDoc.getId();
+            // Get appointment details for notification
+            String appointmentTitle = appointmentDoc.getString("title");
+            Timestamp startTime = appointmentDoc.getTimestamp("startTime");
+            
+            // Format time for notification
+            ZoneId philippineZone = ZoneId.of("Asia/Manila");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .withZone(philippineZone);
+            String formattedStartTime = formatter.format(startTime.toDate().toInstant());
 
             // Get current participants
             List<String> currentParticipants = (List<String>) appointmentDoc.get("participants");
@@ -545,7 +706,7 @@ public class AppointmentController {
             }
 
             // Remove participant
-            currentParticipants.remove(participantId);
+            boolean participantRemoved = currentParticipants.remove(participantId);
 
             // Update participants
             Map<String, Object> updates = new HashMap<>();
@@ -554,6 +715,61 @@ public class AppointmentController {
 
             // Update in Firestore
             firestore.collection("appointments").document(appointmentId).update(updates).get();
+            
+            // Delete the user-appointment relationship
+            var userAppointments = firestore.collection("user_appointments")
+                    .whereEqualTo("userId", participantId)
+                    .whereEqualTo("appointmentId", appointmentId)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            for (var relationship : userAppointments) {
+                relationship.getReference().delete().get();
+            }
+            
+            // Send notification to removed participant (if they were actually in the list)
+            if (participantRemoved && !participantId.equals(userId)) {  // Don't notify if removing self
+                try {
+                    // Store notification in Firestore
+                    Map<String, Object> notificationData = new HashMap<>();
+                    notificationData.put("userId", participantId);
+                    notificationData.put("appointmentId", appointmentId);
+                    notificationData.put("type", "REMOVED_FROM_APPOINTMENT");
+                    notificationData.put("title", "Removed from Appointment");
+                    notificationData.put("message", "You have been removed from appointment: '" + 
+                                         appointmentTitle + "' by " + removerName);
+                    notificationData.put("status", "UNREAD");
+                    notificationData.put("createdAt", Timestamp.now());
+                    notificationData.put("details", Map.of(
+                        "title", appointmentTitle,
+                        "scheduledStartTime", formattedStartTime,
+                        "removedBy", removerName
+                    ));
+                    
+                    // Save to Firestore
+                    firestore.collection("notifications").document().set(notificationData).get();
+                    
+                    // Send push notification
+                    Map<String, String> fcmData = new HashMap<>();
+                    fcmData.put("type", "REMOVED_FROM_APPOINTMENT");
+                    fcmData.put("appointmentId", appointmentId);
+                    fcmData.put("appointmentTitle", appointmentTitle);
+                    
+                    notificationService.sendAppointmentNotification(
+                        participantId,
+                        "Removed from Appointment",
+                        "You have been removed from appointment: '" + appointmentTitle + "' by " + removerName,
+                        fcmData
+                    );
+                    
+                    logger.info("Sent removal notification to participant: {}", participantId);
+                } catch (Exception e) {
+                    logger.error("Failed to send removal notification to participant {}: {}", participantId, e.getMessage());
+                    // Continue even if notification fails
+                }
+            }
+
             logger.info("Successfully removed participant {} from appointment {}", participantId, appointmentId);
 
             // Create response
@@ -648,7 +864,82 @@ public class AppointmentController {
     // 4. Push Notifications (Mobile)
     @PostMapping("/{appointmentId}/notify")
     public ResponseEntity<?> sendNotification(@PathVariable String appointmentId, @RequestBody NotificationRequest request) {
-        return ResponseEntity.ok().build();
+        try {
+            logger.info("Sending notification for appointment: {}", appointmentId);
+            
+            // Validate request
+            if (request.getMessage() == null || request.getType() == null || request.getRecipientIds() == null || request.getRecipientIds().isEmpty()) {
+                logger.error("Invalid notification request: missing required fields");
+                return ResponseEntity.badRequest().body("Missing required fields: message, type, or recipientIds");
+            }
+            
+            // Check if appointment exists
+            var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
+            if (!appointmentDoc.exists()) {
+                logger.error("Appointment not found: {}", appointmentId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            String title = appointmentDoc.getString("title");
+            
+            // Determine notification type and prepare data
+            Map<String, String> notificationData = new HashMap<>();
+            notificationData.put("type", request.getType());
+            notificationData.put("appointmentId", appointmentId);
+            
+            // Send notifications to all recipients
+            int successCount = 0;
+            List<String> failedRecipients = new ArrayList<>();
+            
+            for (String userId : request.getRecipientIds()) {
+                try {
+                    // Store notification in Firestore
+                    Map<String, Object> firestoreNotification = new HashMap<>();
+                    firestoreNotification.put("userId", userId);
+                    firestoreNotification.put("appointmentId", appointmentId);
+                    firestoreNotification.put("type", request.getType());
+                    firestoreNotification.put("title", "Appointment: " + title);
+                    firestoreNotification.put("message", request.getMessage());
+                    firestoreNotification.put("status", "UNREAD");
+                    firestoreNotification.put("createdAt", Timestamp.now());
+                    
+                    // Save to Firestore
+                    firestore.collection("notifications").document().set(firestoreNotification).get();
+                    
+                    // Send FCM push notification
+                    notificationService.sendAppointmentNotification(
+                        userId,
+                        "Appointment: " + title,
+                        request.getMessage(),
+                        notificationData
+                    );
+                    
+                    successCount++;
+                } catch (Exception e) {
+                    logger.error("Failed to send notification to user {}: {}", userId, e.getMessage());
+                    failedRecipients.add(userId);
+                }
+            }
+            
+            // Prepare response
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Notifications sent successfully");
+            response.put("successCount", successCount);
+            response.put("totalRecipients", request.getRecipientIds().size());
+            
+            if (!failedRecipients.isEmpty()) {
+                response.put("failedRecipients", failedRecipients);
+            }
+            
+            logger.info("Successfully sent {} out of {} notifications for appointment: {}", 
+                    successCount, request.getRecipientIds().size(), appointmentId);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error sending notifications: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Failed to send notifications: " + e.getMessage());
+        }
     }
 
     // 5. Quick Appointment Scheduling
@@ -1148,6 +1439,7 @@ public class AppointmentController {
             
             var userDoc = userDocs.iterator().next();
             String userId = userDoc.getId();
+            String userName = userDoc.getString("firstName") + " " + userDoc.getString("lastName");
 
             // Check if appointment exists
             var appointmentDoc = firestore.collection("appointments").document(appointmentId).get().get();
@@ -1161,7 +1453,21 @@ public class AppointmentController {
                 logger.error("User {} is not the creator of appointment {}", userEmail, appointmentId);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
+            
+            // Get appointment details and participants for notifications before deletion
+            String appointmentTitle = appointmentDoc.getString("title");
+            Timestamp startTime = appointmentDoc.getTimestamp("startTime");
+            List<String> participants = (List<String>) appointmentDoc.get("participants");
+            if (participants == null) {
+                participants = new ArrayList<>();
+            }
 
+            // Format time for notification
+            ZoneId philippineZone = ZoneId.of("Asia/Manila");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .withZone(philippineZone);
+            String formattedStartTime = formatter.format(startTime.toDate().toInstant());
+            
             // Delete appointment
             firestore.collection("appointments").document(appointmentId).delete().get();
             
@@ -1185,6 +1491,54 @@ public class AppointmentController {
             
             for (var notification : notifications) {
                 notification.getReference().delete().get();
+            }
+            
+            // Send cancellation notifications to all participants except the one deleting it
+            List<String> notifyParticipants = new ArrayList<>(participants);
+            notifyParticipants.remove(userId); // Don't notify the user who cancelled
+            
+            if (!notifyParticipants.isEmpty()) {
+                for (String participantId : notifyParticipants) {
+                    try {
+                        // Store new cancellation notification in Firestore
+                        Map<String, Object> notificationData = new HashMap<>();
+                        notificationData.put("userId", participantId);
+                        notificationData.put("appointmentId", appointmentId); // Keep for reference even though appointment is deleted
+                        notificationData.put("type", "APPOINTMENT_CANCELLED");
+                        notificationData.put("title", "Appointment Cancelled");
+                        notificationData.put("message", "Appointment '" + appointmentTitle + "' scheduled for " + 
+                                             formattedStartTime + " has been cancelled by " + userName);
+                        notificationData.put("status", "UNREAD");
+                        notificationData.put("createdAt", Timestamp.now());
+                        notificationData.put("details", Map.of(
+                            "title", appointmentTitle,
+                            "scheduledStartTime", formattedStartTime,
+                            "cancelledBy", userName
+                        ));
+                        
+                        // Save to Firestore
+                        firestore.collection("notifications").document().set(notificationData).get();
+                        
+                        // Send push notification
+                        Map<String, String> fcmData = new HashMap<>();
+                        fcmData.put("type", "APPOINTMENT_CANCELLED");
+                        fcmData.put("appointmentId", appointmentId);
+                        fcmData.put("scheduledStartTime", formattedStartTime);
+                        
+                        notificationService.sendAppointmentNotification(
+                            participantId,
+                            "Appointment Cancelled",
+                            "Appointment '" + appointmentTitle + "' scheduled for " + formattedStartTime + 
+                            " has been cancelled by " + userName,
+                            fcmData
+                        );
+                        
+                        logger.info("Sent cancellation notification to participant: {}", participantId);
+                    } catch (Exception e) {
+                        logger.error("Failed to send cancellation notification to participant {}: {}", participantId, e.getMessage());
+                        // Continue with other tasks even if notification failed
+                    }
+                }
             }
 
             logger.info("Successfully deleted appointment: {} and all related data", appointmentId);
@@ -1274,6 +1628,15 @@ public class AppointmentController {
                     // Add user-specific appointment data
                     appointment.setUserRole(userAppointment.getString("role"));
                     appointment.setUserStatus(userAppointment.getString("status"));
+
+                    // For faculty, add approval status if applicable
+                    if ("FACULTY".equals(userAppointment.getString("role"))) {
+                        Map<String, Object> facultyApprovals = (Map<String, Object>) appointmentDoc.get("facultyApprovals");
+                        if (facultyApprovals != null) {
+                            Boolean hasApproved = (Boolean) facultyApprovals.get(userId);
+                            appointment.setHasApproved(hasApproved != null ? hasApproved : false);
+                        }
+                    }
                     
                     appointments.add(appointment);
                 }
