@@ -3,7 +3,6 @@ package com.it342.projectmanagementsystem
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.it342.projectmanagementsystem.activities.RegisterActivity
 import com.it342.projectmanagementsystem.activities.LoginFormActivity
@@ -11,7 +10,7 @@ import com.it342.projectmanagementsystem.activities.LoginFormActivity
 class LoginActivity : AppCompatActivity() {
 
     private lateinit var btnCreateAccount: Button
-    private lateinit var tvLogin: TextView
+    private lateinit var btnLogin: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,14 +18,14 @@ class LoginActivity : AppCompatActivity() {
 
         // Initialize views
         btnCreateAccount = findViewById(R.id.btnCreateAccount)
-        tvLogin = findViewById(R.id.tvLogin)
+        btnLogin = findViewById(R.id.btnLogin)
 
         // Set click listeners
         btnCreateAccount.setOnClickListener {
             startActivity(Intent(this, RegisterActivity::class.java))
         }
 
-        tvLogin.setOnClickListener {
+        btnLogin.setOnClickListener {
             // Navigate to login form
             startActivity(Intent(this, LoginFormActivity::class.java))
         }

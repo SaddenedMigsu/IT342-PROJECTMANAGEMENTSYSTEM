@@ -47,6 +47,13 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
         // Load appointment requests
         loadAppointmentRequests();
     }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Refresh the appointment list when returning to this activity
+        loadAppointmentRequests();
+    }
 
     private void loadAppointmentRequests() {
         SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
@@ -71,19 +78,23 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
                     Log.d(TAG, "Successfully fetched appointments for faculty.");
                     List<Appointment> facultyAppointments = response.body();
                     
-                    // Still filter for PENDING_APPROVAL status on the client side
-                    List<Appointment> pendingRequests = facultyAppointments.stream()
-                            .filter(app -> "PENDING_APPROVAL".equalsIgnoreCase(app.getStatus()))
+                    // Filter for both PENDING_APPROVAL and SCHEDULED statuses
+                    List<Appointment> filteredAppointments = facultyAppointments.stream()
+                            .filter(app -> {
+                                String status = app.getStatus();
+                                return "PENDING_APPROVAL".equalsIgnoreCase(status) || 
+                                       "SCHEDULED".equalsIgnoreCase(status);
+                            })
                             .collect(Collectors.toList());
 
-                    Log.d(TAG, "Found " + pendingRequests.size() + " pending appointment requests.");
+                    Log.d(TAG, "Found " + filteredAppointments.size() + " pending or scheduled appointment requests.");
 
                     appointmentRequestList.clear();
-                    appointmentRequestList.addAll(pendingRequests);
+                    appointmentRequestList.addAll(filteredAppointments);
                     adapter.notifyDataSetChanged();
 
-                    if (pendingRequests.isEmpty()) {
-                        Toast.makeText(ManageAppointmentRequestsActivity.this, "No pending appointment requests found.", Toast.LENGTH_SHORT).show();
+                    if (filteredAppointments.isEmpty()) {
+                        Toast.makeText(ManageAppointmentRequestsActivity.this, "No appointment requests found.", Toast.LENGTH_SHORT).show();
                     }
 
                 } else {

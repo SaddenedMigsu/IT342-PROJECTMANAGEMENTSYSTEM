@@ -23,7 +23,7 @@ import retrofit2.Response;
 public class LoginActivity extends AppCompatActivity {
     private static final String TAG = "LoginActivity";
     private EditText etEmail, etPassword;
-    private Button btnLogin;
+    private Button btnLogin, btnCreateAccount;
     private ProgressBar progressBar;
     private ApiService apiService;
 
@@ -34,15 +34,27 @@ public class LoginActivity extends AppCompatActivity {
 
         initializeViews();
         apiService = RetrofitClient.getInstance().getApiService();
-
-        btnLogin.setOnClickListener(v -> loginUser());
+        setupClickListeners();
     }
 
     private void initializeViews() {
         etEmail = findViewById(R.id.etEmail);
         etPassword = findViewById(R.id.etPassword);
         btnLogin = findViewById(R.id.btnLogin);
+        btnCreateAccount = findViewById(R.id.btnCreateAccount);
         progressBar = findViewById(R.id.progressBar);
+    }
+
+    private void setupClickListeners() {
+        // Set up Login button click listener
+        btnLogin.setOnClickListener(v -> loginUser());
+
+        // Set up Create Account button click listener
+        btnCreateAccount.setOnClickListener(v -> {
+            Log.d(TAG, "Create Account button clicked");
+            Intent intent = new Intent(LoginActivity.this, RegisterActivity.class);
+            startActivity(intent);
+        });
     }
 
     private void loginUser() {

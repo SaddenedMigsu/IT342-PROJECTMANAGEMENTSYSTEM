@@ -1,11 +1,13 @@
 package com.it342.projectmanagementsystem.activities;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.widget.Button;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import com.it342.projectmanagementsystem.R;
+import com.it342.projectmanagementsystem.utils.Constants;
 
 public class FacultyDashboardActivity extends AppCompatActivity {
     
@@ -19,6 +21,7 @@ public class FacultyDashboardActivity extends AppCompatActivity {
         
         initializeViews();
         setupButtonClickListeners();
+        setWelcomeMessage();
     }
 
     private void initializeViews() {
@@ -26,8 +29,16 @@ public class FacultyDashboardActivity extends AppCompatActivity {
         btnManageRequests = findViewById(R.id.btnManageRequests);
         btnViewSchedule = findViewById(R.id.btnViewSchedule);
         btnManageParticipants = findViewById(R.id.btnManageParticipants);
+    }
+
+    private void setWelcomeMessage() {
+        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE);
+        String firstName = prefs.getString(Constants.KEY_FIRST_NAME, "");
+        String lastName = prefs.getString(Constants.KEY_LAST_NAME, "");
         
-        // TODO: Optionally, set welcome message using faculty name from SharedPreferences
+        if (!firstName.isEmpty() && !lastName.isEmpty()) {
+            tvFacultyWelcome.setText("Welcome, " + firstName + " " + lastName + "!");
+        }
     }
 
     private void setupButtonClickListeners() {
@@ -35,7 +46,7 @@ public class FacultyDashboardActivity extends AppCompatActivity {
             startActivity(new Intent(this, ManageAppointmentRequestsActivity.class)));
 
         btnViewSchedule.setOnClickListener(v -> 
-            startActivity(new Intent(this, ViewAppointmentScheduleActivity.class)));
+            startActivity(new Intent(this, FacultyAppointmentScheduleActivity.class)));
 
         btnManageParticipants.setOnClickListener(v -> 
             startActivity(new Intent(this, ManageAppointmentParticipantsActivity.class)));

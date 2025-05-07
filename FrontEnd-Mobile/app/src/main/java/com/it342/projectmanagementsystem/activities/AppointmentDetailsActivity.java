@@ -88,7 +88,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
             Log.d(TAG, "Tags in parcel: " + (tags != null ? tags.size() : "null"));
             if (tags != null && !tags.isEmpty()) {
                 for (Map.Entry<String, Tag> entry : tags.entrySet()) {
-                    Log.d(TAG, "Tag from parcel: " + entry.getKey() + ", Color: " + entry.getValue().getColor());
+                    Log.d(TAG, "Tag from parcel: " + entry.getKey() + ", Color: " + entry.getValue().getColorForJava());
                 }
             }
         }
@@ -700,10 +700,10 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
         for (Map.Entry<String, Tag> entry : tags.entrySet()) {
             Map<String, Object> tagData = new HashMap<>();
             tagData.put("name", entry.getValue().getName());
-            tagData.put("color", entry.getValue().getColor());
+            tagData.put("color", entry.getValue().getColorForJava());
             tagsMap.put(entry.getKey(), tagData);
             
-            Log.d(TAG, "Adding tag to sync: " + entry.getKey() + ", Color: " + entry.getValue().getColor());
+            Log.d(TAG, "Adding tag to sync: " + entry.getKey() + ", Color: " + entry.getValue().getColorForJava());
         }
         
         // Create the update map
@@ -1070,7 +1070,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
         final TextView tvColorHex = dialogView.findViewById(R.id.tvColorHex);
         
         // Set up the initial state for editing mode
-        final String[] selectedColor = {isEdit ? existingTag.getColor() : "#FF0000"};
+        final String[] selectedColor = {isEdit ? existingTag.getColorForJava() : "#FF0000"};
         if (isEdit) {
             etTagName.setText(tagName);
             try {
@@ -1115,7 +1115,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
             if (isEdit) {
                 // Always remove the old tag regardless of name change
                 // This ensures we don't end up with both old and new tags
-                removeTag(tagName);
+                removeTagFromFirestore(tagName);
                 
                 // Log what we're doing
                 if (!tagName.equals(newTagName)) {
@@ -1138,7 +1138,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
      * Saves a tag to Firestore for the current appointment
      */
     private void saveTag(String tagName, Tag tag) {
-        Log.d(TAG, "Saving tag: " + tagName + ", Color: " + tag.getColor());
+        Log.d(TAG, "Saving tag: " + tagName + ", Color: " + tag.getColorForJava());
         
         // Create a map for the entire tags structure
         Map<String, Object> tagsMap = new HashMap<>();
@@ -1154,7 +1154,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 
                 Map<String, Object> existingTagData = new HashMap<>();
                 existingTagData.put("name", entry.getValue().getName());
-                existingTagData.put("color", entry.getValue().getColor());
+                existingTagData.put("color", entry.getValue().getColorForJava());
                 tagsMap.put(entry.getKey(), existingTagData);
             }
         }
@@ -1162,7 +1162,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
         // Add the new tag
         Map<String, Object> newTagData = new HashMap<>();
         newTagData.put("name", tag.getName());
-        newTagData.put("color", tag.getColor());
+        newTagData.put("color", tag.getColorForJava());
         tagsMap.put(tagName, newTagData);
         
         Log.d(TAG, "Complete tags map to save: " + tagsMap.size() + " tags");
@@ -1178,23 +1178,25 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 .addOnSuccessListener(aVoid -> {
                     Toast.makeText(this, "Tag saved successfully", Toast.LENGTH_SHORT).show();
                     
-                    // Clear any previous tags with the same name to avoid duplicates
+                    // First try to remove any existing tag with the same name
                     if (appointment.getTags() != null) {
-                        appointment.removeTag(tagName);
+                        removeTagFromFirestore(tagName);
                     }
                     
                     // Update local appointment object
                     if (appointment.getTags() == null) {
                         Log.d(TAG, "Creating new tags map for appointment");
                     }
-                    appointment.addTag(tagName, tag);
+                    
+                    // Add the new tag
+                    addTag(tagName, tag);
                     
                     // Log the tags after adding
                     Map<String, Tag> updatedTags = appointment.getTags();
                     Log.d(TAG, "Tags after adding: " + (updatedTags != null ? updatedTags.size() : "null"));
                     if (updatedTags != null) {
                         for (Map.Entry<String, Tag> entry : updatedTags.entrySet()) {
-                            Log.d(TAG, "Tag: " + entry.getKey() + ", Color: " + entry.getValue().getColor());
+                            Log.d(TAG, "Tag: " + entry.getKey() + ", Color: " + entry.getValue().getColorForJava());
                         }
                     }
                     
@@ -1209,11 +1211,11 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                     Toast.makeText(this, "Error saving tag: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
-    
+
     /**
-     * Removes a tag from the appointment
+     * Removes a tag from the appointment in Firestore
      */
-    private void removeTag(String tagName) {
+    private void removeTagFromFirestore(String tagName) {
         Log.d(TAG, "Removing tag: " + tagName);
         
         // Create a complete map of the remaining tags
@@ -1230,7 +1232,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 
                 Map<String, Object> tagData = new HashMap<>();
                 tagData.put("name", entry.getValue().getName());
-                tagData.put("color", entry.getValue().getColor());
+                tagData.put("color", entry.getValue().getColorForJava());
                 tagsMap.put(entry.getKey(), tagData);
                 
                 Log.d(TAG, "Keeping tag: " + entry.getKey() + " in updated tags map");
@@ -1252,14 +1254,15 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                     
                     // Update local appointment object
                     if (appointment.getTags() != null) {
-                        appointment.removeTag(tagName);
+                        // Remove the tag using our safe method
+                        removeTag(tagName);
                         
                         // Log the tags after removal
                         Map<String, Tag> updatedTags = appointment.getTags();
                         Log.d(TAG, "Tags after removal: " + (updatedTags != null ? updatedTags.size() : "null"));
                         if (updatedTags != null && !updatedTags.isEmpty()) {
                             for (Map.Entry<String, Tag> entry : updatedTags.entrySet()) {
-                                Log.d(TAG, "Remaining tag: " + entry.getKey() + ", Color: " + entry.getValue().getColor());
+                                Log.d(TAG, "Remaining tag: " + entry.getKey() + ", Color: " + entry.getValue().getColorForJava());
                             }
                         } else {
                             Log.d(TAG, "No tags remaining after removal");
@@ -1277,7 +1280,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                     Toast.makeText(this, "Error removing tag: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
-    
+
     /**
      * Updates the display of tags in the UI
      */
@@ -1309,7 +1312,8 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
             TextView tvTagName = tagView.findViewById(R.id.tvTagName);
             tvTagName.setText(tagName);
             try {
-                tvTagName.setTextColor(Color.parseColor(tag.getColor()));
+                // Use the renamed method
+                tvTagName.setTextColor(Color.parseColor(tag.getColorForJava()));
             } catch (IllegalArgumentException e) {
                 // Use default color if parsing fails
                 tvTagName.setTextColor(Color.BLACK);
@@ -1317,15 +1321,19 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
             
             // Set up edit button
             ImageButton btnEditTag = tagView.findViewById(R.id.btnEditTag);
-            btnEditTag.setOnClickListener(v -> showAddTagDialog(tagName, tag));
+            // Use final copies of variables for lambda capture
+            final String finalTagName = tagName;
+            final Tag finalTag = tag;
+            btnEditTag.setOnClickListener(v -> showAddTagDialog(finalTagName, finalTag));
             
             // Set up delete button
             ImageButton btnDeleteTag = tagView.findViewById(R.id.btnDeleteTag);
             btnDeleteTag.setOnClickListener(v -> {
+                final String finalDeleteTagName = tagName;
                 new AlertDialog.Builder(this)
                         .setTitle("Delete Tag")
-                        .setMessage("Are you sure you want to delete the tag '" + tagName + "'?")
-                        .setPositiveButton("Delete", (dialog, which) -> removeTag(tagName))
+                        .setMessage("Are you sure you want to delete the tag '" + finalDeleteTagName + "'?")
+                        .setPositiveButton("Delete", (dialog, which) -> removeTagFromFirestore(finalDeleteTagName))
                         .setNegativeButton("Cancel", null)
                         .show();
             });
@@ -1399,5 +1407,71 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 .addOnFailureListener(e -> {
                     Log.e(TAG, "Error fetching tags from Firestore", e);
                 });
+    }
+
+    /**
+     * Convert a Date object to a Timestamp
+     */
+    private Timestamp dateToTimestamp(Date date) {
+        if (date == null) return null;
+        return new Timestamp(date.getTime() / 1000, 0);
+    }
+
+    /**
+     * Convert a Timestamp to a Date object
+     */
+    private Date timestampToDate(Timestamp timestamp) {
+        if (timestamp == null) return null;
+        return timestamp.toDate();
+    }
+
+    /**
+     * Helper method to safely add a tag directly to the appointment's tag map
+     */
+    private void addTag(String tagName, Tag tag) {
+        if (appointment != null) {
+            try {
+                appointment.addTag(tagName, tag);
+                Log.d(TAG, "Successfully added tag: " + tagName);
+            } catch (Exception e) {
+                Log.e(TAG, "Error adding tag to appointment object", e);
+                // Fallback to manual approach if the method call fails
+                try {
+                    Map<String, Tag> tags = appointment.getTags();
+                    if (tags == null) {
+                        tags = new HashMap<>();
+                        appointment.setTags(tags);
+                    }
+                    if (tags instanceof HashMap) {
+                        ((HashMap<String, Tag>) tags).put(tagName, tag);
+                    }
+                } catch (Exception e2) {
+                    Log.e(TAG, "Fallback tag addition also failed", e2);
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper method to safely remove a tag directly from the appointment's tag map
+     */
+    private void removeTag(String tagName) {
+        if (appointment != null) {
+            try {
+                appointment.removeTag(tagName);
+                Log.d(TAG, "Successfully removed tag: " + tagName);
+            } catch (Exception e) {
+                Log.e(TAG, "Error removing tag from appointment object", e);
+                // Fallback to manual approach if the method call fails
+                try {
+                    Map<String, Tag> tags = appointment.getTags();
+                    if (tags != null && tags instanceof HashMap) {
+                        ((HashMap<String, Tag>) tags).remove(tagName);
+                    }
+                } catch (Exception e2) {
+                    Log.e(TAG, "Fallback tag removal also failed", e2);
+                }
+            }
+        }
     }
 } 

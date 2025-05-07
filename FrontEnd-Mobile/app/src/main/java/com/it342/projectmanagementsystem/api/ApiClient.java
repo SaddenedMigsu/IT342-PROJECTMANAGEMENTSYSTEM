@@ -6,7 +6,7 @@ import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
 public class ApiClient {
-    private static final String BASE_URL = "http://10.0.2.2:8080/"; // Android emulator localhost
+    private static final String BASE_URL = "https://it342-projectmanagementsystem.onrender.com/"; // Deployed backend URL
     private static ApiClient instance;
     private final Retrofit retrofit;
     private ApiService apiService;

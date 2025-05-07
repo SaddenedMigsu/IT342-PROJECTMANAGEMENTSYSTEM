@@ -63,6 +63,9 @@
         <activity
             android:name=".activities.AppointmentRequestDetailsActivity"
             android:exported="false" />
+        <activity
+            android:name=".activities.FacultyAppointmentScheduleActivity"
+            android:exported="false" />
         <!-- <activity android:name=".StudentDashboardActivity" /> -->
     </application>
 

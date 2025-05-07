@@ -4,47 +4,87 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
+    android:padding="24dp"
+    android:background="@color/white"
     tools:context=".activities.FacultyDashboardActivity">
+
+    <TextView
+        android:id="@+id/tvFacultyDashboardTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Faculty Dashboard"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
         android:id="@+id/tvFacultyWelcome"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Faculty Dashboard"
-        android:textSize="24sp"
-        android:textStyle="bold"
+        android:layout_marginTop="8dp"
+        android:text="Welcome, Faculty!"
+        android:textSize="18sp"
+        android:textColor="#555555"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/tvFacultyDashboardTitle" />
 
-    <Button
-        android:id="@+id/btnManageRequests"
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardManageRequests"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:text="Manage Appointment Requests"
+        android:layout_height="100dp"
+        android:layout_marginTop="48dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="6dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tvFacultyWelcome" />
+        app:layout_constraintTop_toBottomOf="@+id/tvFacultyWelcome">
 
-    <Button
-        android:id="@+id/btnViewSchedule"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnManageRequests"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="Manage Appointment Requests"
+            style="@style/FacultyDashboardButton" />
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardViewSchedule"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="View Appointment Schedule"
+        android:layout_height="100dp"
+        android:layout_marginTop="24dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="6dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btnManageRequests" />
+        app:layout_constraintTop_toBottomOf="@+id/cardManageRequests">
 
-    <Button
-        android:id="@+id/btnManageParticipants"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnViewSchedule"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="View Appointment Schedule" 
+            style="@style/FacultyDashboardButton" />
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardManageParticipants"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Manage Appointment Participants"
+        android:layout_height="100dp"
+        android:layout_marginTop="24dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="6dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btnViewSchedule" />
+        app:layout_constraintTop_toBottomOf="@+id/cardViewSchedule">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnManageParticipants"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="Manage Appointment Participants"
+            style="@style/FacultyDashboardButton" />
+    </androidx.cardview.widget.CardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout> 

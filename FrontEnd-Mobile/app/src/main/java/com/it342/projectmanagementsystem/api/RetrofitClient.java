@@ -17,7 +17,7 @@ import java.net.Proxy;
 public class RetrofitClient {
     private static final String TAG = "RetrofitClient";
     // In Android emulator, 10.0.2.2 is the special IP that maps to the host machine's localhost
-    private static final String BASE_URL = "http://10.0.2.2:8080/";  // Backend server port
+    private static final String BASE_URL = "https://it342-projectmanagementsystem.onrender.com/";  // Deployed backend URL
     private static RetrofitClient instance;
     private static Context context;
     private static Retrofit retrofit;
@@ -39,11 +39,17 @@ public class RetrofitClient {
                 String token = prefs.getString("token", "");
                 Request original = chain.request();
                 
+                // Log the original request URL
+                Log.d(TAG, "Making request to URL: " + original.url());
+                
                 Request.Builder requestBuilder = original.newBuilder()
                         .header("Authorization", "Bearer " + token)
                         .method(original.method(), original.body());
                 
-                return chain.proceed(requestBuilder.build());
+                Request request = requestBuilder.build();
+                Log.d(TAG, "Request headers: " + request.headers());
+                
+                return chain.proceed(request);
             })
             .addInterceptor(loggingInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
