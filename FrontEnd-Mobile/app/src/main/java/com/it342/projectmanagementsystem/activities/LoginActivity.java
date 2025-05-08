@@ -10,11 +10,13 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.firebase.messaging.FirebaseMessaging;
 import com.it342.projectmanagementsystem.R;
 import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.models.LoginRequest;
 import com.it342.projectmanagementsystem.models.AuthResponse;
+import com.it342.projectmanagementsystem.utils.Constants;
 import java.io.IOException;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -119,6 +121,37 @@ public class LoginActivity extends AppCompatActivity {
         editor.putString("role", authResponse.getRole());
         editor.apply();
         Log.i(TAG, "User data saved successfully. Role: " + authResponse.getRole());
+        
+        // Send FCM token to server after successful login
+        sendFCMTokenToServer();
+    }
+    
+    private void sendFCMTokenToServer() {
+        SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+        String fcmToken = prefs.getString(Constants.KEY_FCM_TOKEN, "");
+        
+        if (!fcmToken.isEmpty()) {
+            // We have a token, send it to server
+            com.it342.projectmanagementsystem.services.PMSFirebaseMessagingService.sendRegistrationTokenToServer(this, fcmToken);
+        } else {
+            // No token available, try to get one
+            FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        String token = task.getResult();
+                        
+                        // Save token locally
+                        SharedPreferences.Editor editor = prefs.edit();
+                        editor.putString(Constants.KEY_FCM_TOKEN, token);
+                        editor.apply();
+                        
+                        // Send to server
+                        com.it342.projectmanagementsystem.services.PMSFirebaseMessagingService.sendRegistrationTokenToServer(this, token);
+                    } else {
+                        Log.e(TAG, "Failed to get FCM token", task.getException());
+                    }
+                });
+        }
     }
 
     private void navigateToHomePage(String userRole) {

@@ -65,20 +65,47 @@ public class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.
     public void onBindViewHolder(@NonNull AppointmentViewHolder holder, int position) {
         Appointment appointment = appointments.get(position);
         
-        // Set appointment details
+        // Get appointment ID for timer management
+        String appointmentId = appointment.getId() != null ? appointment.getId() : appointment.getAppointmentId();
+        
+        // Store the appointment ID in the ViewHolder for better association
+        holder.appointmentId = appointmentId;
+        
+        // When recycling a view, ensure any existing timer for this holder is stopped first
+        if (holder.currentTimerId != null && !holder.currentTimerId.equals(appointmentId)) {
+            timerManager.stopTimer(holder.currentTimerId);
+            holder.currentTimerId = null;
+        }
+        
+        // Set the new appointment ID
+        holder.currentTimerId = appointmentId;
+        
+        // Continue with regular binding
         holder.tvAppointmentTitle.setText(appointment.getTitle());
         
-        // Use the description which now contains the reason as well
+        // Truncate description if too long
         String description = appointment.getDescription();
-        holder.tvAppointmentDescription.setText(description != null ? description : "No description available");
+        if (description != null) {
+            if (description.length() > 100) {
+                description = description.substring(0, 97) + "...";
+            }
+            holder.tvAppointmentDescription.setText(description);
+        } else {
+            holder.tvAppointmentDescription.setText("No description provided");
+        }
         
         // Hide location view - check if it exists first
         if (holder.tvAppointmentLocation != null) {
             holder.tvAppointmentLocation.setVisibility(View.GONE);
         }
         
-        // Display tags if available - use the activity's displayTags method
-        if (listener != null) {
+        // Clear any existing tags
+        if (holder.tagsContainer != null) {
+            holder.tagsContainer.removeAllViews();
+        }
+        
+        // Display tags if available
+        if (listener != null && holder.tagsContainer != null) {
             listener.displayTags(appointment, holder.tagsContainer);
         }
         
@@ -111,7 +138,6 @@ public class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.
                 } else {
                     // Only start timer for non-completed appointments
                     // Start or update the countdown timer for this appointment
-                    String appointmentId = appointment.getId();
                     if (appointmentId != null && !appointmentId.isEmpty()) {
                         // Set an initial loading text
                         holder.tvTimeRemaining.setText("Calculating time remaining...");
@@ -211,7 +237,7 @@ public class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.
         // Apply text color to status
         holder.tvStatus.setTextColor(ContextCompat.getColor(context, statusColor));
         
-        // Set click listener for the card
+        // Make the entire card clickable
         holder.cardView.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onAppointmentClick(appointment);
@@ -231,7 +257,8 @@ public class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.
         }
     }
 
-    static class AppointmentViewHolder extends RecyclerView.ViewHolder {
+    // ViewHolder class with additional fields for timer management
+    public static class AppointmentViewHolder extends RecyclerView.ViewHolder {
         TextView tvAppointmentTitle;
         TextView tvAppointmentDescription;
         TextView tvDateTime;
@@ -240,8 +267,10 @@ public class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.
         TextView tvAppointmentLocation;
         LinearLayout tagsContainer;
         CardView cardView;
-
-        AppointmentViewHolder(@NonNull View itemView) {
+        String appointmentId; // Store the appointment ID
+        String currentTimerId; // Track which timer is active
+        
+        public AppointmentViewHolder(@NonNull View itemView) {
             super(itemView);
             tvAppointmentTitle = itemView.findViewById(R.id.tvAppointmentTitle);
             tvAppointmentDescription = itemView.findViewById(R.id.tvAppointmentDescription);
@@ -251,6 +280,8 @@ public class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.
             tvAppointmentLocation = itemView.findViewById(R.id.tvAppointmentLocation);
             tagsContainer = itemView.findViewById(R.id.llTagsContainer);
             cardView = itemView.findViewById(R.id.cardAppointment);
+            appointmentId = null;
+            currentTimerId = null;
         }
     }
 

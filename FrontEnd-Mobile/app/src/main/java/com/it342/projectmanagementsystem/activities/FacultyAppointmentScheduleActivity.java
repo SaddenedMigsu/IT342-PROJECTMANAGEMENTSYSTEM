@@ -177,8 +177,8 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
             return;
         }
         
-        // Make API call to get faculty appointments
-        Call<List<Appointment>> call = apiService.getAppointments("Bearer " + token);
+        // Make API call to get faculty appointments using getUserAppointments
+        Call<List<Appointment>> call = apiService.getUserAppointments(facultyId, "Bearer " + token);
         
         call.enqueue(new Callback<List<Appointment>>() {
             @Override
@@ -187,27 +187,27 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
                     List<Appointment> appointments = response.body();
                     Log.d(TAG, "Received " + appointments.size() + " appointments from API");
                     
-                    // Filter appointments for faculty if needed
-                    // This may not be needed if the API already returns only appointments for this faculty
-                    
                     if (!appointments.isEmpty()) {
-                        allAppointments = appointments;
-                        processAppointments(allAppointments);
+                        allAppointments = new ArrayList<>(appointments); // Use a mutable copy
+                        // Now fetch tags for these appointments from Firestore.
+                        // fetchTagsFromFirestore will eventually call processAppointments.
+                        fetchTagsFromFirestore();
                     } else {
-                        Log.d(TAG, "No appointments found for faculty");
-                        // Add a fake appointment for testing with Marck Ramon
-                        createTestAppointmentWithMarckRamon();
+                        Log.d(TAG, "No appointments found for faculty via API. Falling back to Firestore.");
+                        // Fallback to Firestore if API returns no appointments
+                        loadAppointmentsFromFirebase();
                     }
                 } else {
                     try {
                         String errorBody = response.errorBody() != null ? 
                             response.errorBody().string() : "Unknown error";
-                        Log.e(TAG, "Failed to load appointments: " + errorBody);
+                        Log.e(TAG, "Failed to load appointments from API: " + errorBody);
                     } catch (IOException e) {
-                        Log.e(TAG, "Error reading error body", e);
+                        Log.e(TAG, "Error reading error body from API response", e);
                     }
                     
                     // Fallback to Firebase if API fails
+                    Log.d(TAG, "API call failed or returned error. Falling back to Firestore.");
                     loadAppointmentsFromFirebase();
                 }
             }
@@ -216,6 +216,7 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
             public void onFailure(Call<List<Appointment>> call, Throwable t) {
                 Log.e(TAG, "Error fetching appointments from API", t);
                 // Fallback to Firebase if API call fails
+                Log.d(TAG, "API call failed due to network or other issue. Falling back to Firestore.");
                 loadAppointmentsFromFirebase();
             }
         });
@@ -252,14 +253,14 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
                     fetchTagsFromFirestore();
                 } else {
                     Log.d(TAG, "No appointments found in Firestore");
-                    // Add a fake appointment for testing with Marck Ramon
-                    createTestAppointmentWithMarckRamon();
+                    // Display empty state
+                    processAppointments(new ArrayList<>());
                 }
             })
             .addOnFailureListener(e -> {
                 Log.e(TAG, "Error loading appointments from Firestore", e);
-                // If all else fails, create test appointment
-                createTestAppointmentWithMarckRamon();
+                // Display empty state
+                processAppointments(new ArrayList<>());
             });
     }
     
@@ -289,6 +290,47 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
                         // Log all available fields for debugging
                         Log.d(TAG, "Firestore data for appointment: " + appointmentId + 
                              " - Fields: " + documentSnapshot.getData().keySet());
+                        
+                        // Check for and set creatorName if missing or unknown
+                        String currentCreatorName = appointment.getCreatorName();
+                        if (currentCreatorName == null || currentCreatorName.isEmpty() || 
+                            currentCreatorName.contains("Unknown")) {
+                            
+                            // Try to get creatorName directly from Firestore
+                            String firebaseCreatorName = documentSnapshot.getString("creatorName");
+                            if (firebaseCreatorName != null && !firebaseCreatorName.isEmpty()) {
+                                appointment.setCreatorName(firebaseCreatorName);
+                                Log.d(TAG, "Set creatorName from Firestore: " + firebaseCreatorName + 
+                                    " for appointment: " + appointmentId);
+                            } else {
+                                // If no creatorName, try to get createdBy
+                                String createdBy = documentSnapshot.getString("createdBy");
+                                if (createdBy != null && !createdBy.isEmpty()) {
+                                    // If createdBy is an email, extract username part
+                                    if (createdBy.contains("@")) {
+                                        String username = createdBy.split("@")[0];
+                                        // Format username nicely (replace dots with spaces, capitalize words)
+                                        username = username.replace(".", " ");
+                                        StringBuilder formattedName = new StringBuilder();
+                                        for (String part : username.split(" ")) {
+                                            if (!part.isEmpty()) {
+                                                formattedName.append(Character.toUpperCase(part.charAt(0)))
+                                                    .append(part.substring(1))
+                                                    .append(" ");
+                                            }
+                                        }
+                                        appointment.setCreatorName(formattedName.toString().trim());
+                                        Log.d(TAG, "Set creatorName from createdBy email: " + 
+                                            formattedName.toString().trim() + " for appointment: " + appointmentId);
+                                    } else {
+                                        // Use createdBy as is
+                                        appointment.setCreatorName(createdBy);
+                                        Log.d(TAG, "Set creatorName to createdBy: " + createdBy + 
+                                            " for appointment: " + appointmentId);
+                                    }
+                                }
+                            }
+                        }
                         
                         // Check for tags field
                         Map<String, Object> tagsMap = (Map<String, Object>) documentSnapshot.get("tags");
@@ -463,7 +505,9 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
                 eventCal.clear();
                 eventCal.set(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH));
                 
-                Log.d(TAG, "Adding event for date: " + dateFormatter.format(eventCal.getTime()));
+                Log.d(TAG, "Adding event for date: " + dateFormatter.format(eventCal.getTime()) + 
+                      " - Appointment: " + appointment.getTitle() + 
+                      " (ID: " + appointment.getAppointmentId() + ")");
                 events.add(new EventDay(eventCal, R.drawable.ic_event_marker));
             }
         }
@@ -495,7 +539,8 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
         String formattedDate = dateFormatter.format(day.getTime());
         tvAppointmentsToday.setText("Appointments for " + formattedDate);
         
-        // Update adapter
+        // Update adapter - important to properly update without recreating the adapter
+        // This prevents timers from being reset
         appointmentAdapter.setAppointments(appointmentsForDay);
         
         // Show/hide no appointments message
@@ -527,6 +572,9 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
         TextView tvDescription = dialog.findViewById(R.id.tvDialogDescription);
         Button btnClose = dialog.findViewById(R.id.btnCloseDialog);
         Button btnViewFull = dialog.findViewById(R.id.btnViewFullDetails);
+        
+        // Hide the Full Details button
+        btnViewFull.setVisibility(View.GONE);
         
         // Set appointment details
         tvTitle.setText(appointment.getTitle());
@@ -566,14 +614,6 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
         
         // Set button listeners
         btnClose.setOnClickListener(v -> dialog.dismiss());
-        
-        btnViewFull.setOnClickListener(v -> {
-            // Navigate to full appointment details
-            Intent intent = new Intent(this, AppointmentDetailsActivity.class);
-            intent.putExtra("APPOINTMENT_PARCEL", appointment);
-            startActivity(intent);
-            dialog.dismiss();
-        });
         
         dialog.show();
     }

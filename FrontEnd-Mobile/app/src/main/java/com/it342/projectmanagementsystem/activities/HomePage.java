@@ -13,9 +13,11 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.it342.projectmanagementsystem.PMSApplication;
 import com.it342.projectmanagementsystem.R;
 import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
@@ -36,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import com.google.firebase.Timestamp;
 import java.util.TimeZone;
+import java.util.Collections;
 
 public class HomePage extends AppCompatActivity {
     private static final String TAG = "HomePage";
@@ -46,6 +49,10 @@ public class HomePage extends AppCompatActivity {
     private Map<String, TextView> countdownTextViews = new HashMap<>();
     private List<Appointment> currentAppointments;
     private boolean isTimerRunning = false;
+    private ImageButton btnNotification;
+    private ImageButton btnLogout;
+    private TextView tvNotificationBadge;
+    private int unreadNotificationCount = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,22 +62,39 @@ public class HomePage extends AppCompatActivity {
         initializeViews();
         setupNavigation();
         loadUserData();
-        fetchAppointments();
         
-        // Initialize timer handler for countdown updates
+        // Request notification permissions for Android 13+
+        PMSApplication.requestNotificationPermission(this);
+        
+        // Initialize timer handler for countdown updates - do this before fetching appointments
         timerHandler = new Handler(Looper.getMainLooper());
         timerRunnable = new Runnable() {
             @Override
             public void run() {
                 updateAllCountdowns();
+                // Schedule next update
                 timerHandler.postDelayed(this, 1000); // Update every second
             }
         };
+        
+        fetchAppointments();
     }
 
     private void initializeViews() {
         appointmentsContainer = findViewById(R.id.appointmentsContainer);
         welcomeText = findViewById(R.id.welcomeText);
+        btnNotification = findViewById(R.id.btnNotification);
+        btnLogout = findViewById(R.id.btnLogout);
+        tvNotificationBadge = findViewById(R.id.tvNotificationBadge);
+        
+        // Set click listener for notification button
+        btnNotification.setOnClickListener(v -> {
+            Intent intent = new Intent(this, NotificationsActivity.class);
+            startActivity(intent);
+        });
+        
+        // Set click listener for logout button
+        btnLogout.setOnClickListener(v -> showLogoutConfirmationDialog());
     }
 
     private void setupNavigation() {
@@ -108,6 +132,8 @@ public class HomePage extends AppCompatActivity {
     private void fetchAppointments() {
         SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
         String token = prefs.getString("token", "");
+        String userId = prefs.getString("userId", "");
+        String email = prefs.getString("email", "");
 
         if (token.isEmpty()) {
             Log.e(TAG, "Missing token");
@@ -115,7 +141,7 @@ public class HomePage extends AppCompatActivity {
             return;
         }
 
-        Log.d(TAG, "Fetching all appointments");
+        Log.d(TAG, "Fetching all appointments for user: " + email);
         ApiService apiService = RetrofitClient.getInstance().getApiService();
         Call<List<Appointment>> call = apiService.getAppointments("Bearer " + token);
 
@@ -126,85 +152,127 @@ public class HomePage extends AppCompatActivity {
                     List<Appointment> appointments = response.body();
                     Log.d(TAG, "Received " + appointments.size() + " appointments from API");
                     
-                    // Enhanced debugging - log all appointment titles
-                    boolean foundMarckRamon = false;
-                    for (Appointment appt : appointments) {
-                        try {
-                            String id = appt.getId();
-                            String appId = appt.getAppointmentId();
-                            String title = appt.getTitle();
-                            Log.d(TAG, "API returned appointment: ID=" + id + ", appointmentId=" + appId + ", Title=" + title);
-                            // Check specifically for the meeting with Marck Ramon
-                            if (title != null && title.contains("Marck Ramon")) {
-                                Log.d(TAG, "Found the meeting with Marck Ramon! ID=" + id + ", appointmentId=" + appId);
-                                foundMarckRamon = true;
-                            }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error reading appointment data", e);
-                        }
+                    // If API returns 0 appointments, log this and proceed with Firestore
+                    if (appointments.isEmpty()) {
+                        Log.w(TAG, "API returned 0 appointments for user: " + email + ". Checking Firestore...");
                     }
                     
-                    // If Marck Ramon appointment is not found, create it manually for testing
-                    if (!foundMarckRamon) {
-                        Log.d(TAG, "Marck Ramon appointment not found in API response, creating test appointment");
-                        Appointment testAppointment = new Appointment();
-                        testAppointment.setId("test-appointment-id");
-                        testAppointment.setAppointmentId("test-appointment-id");
-                        testAppointment.setTitle("Meeting with Marck Ramon");
-                        testAppointment.setDescription("This is a test appointment to diagnose display issues");
-                        testAppointment.setStatus("confirmed");
-                        
-                        // Set timestamps (current time + 1 hour for startTime, +2 hours for endTime)
-                        long now = System.currentTimeMillis();
-                        com.google.firebase.Timestamp startTime = new com.google.firebase.Timestamp(now / 1000 + 3600, 0);
-                        com.google.firebase.Timestamp endTime = new com.google.firebase.Timestamp(now / 1000 + 7200, 0);
-                        testAppointment.setStartTime(startTime);
-                        testAppointment.setEndTime(endTime);
-                        
-                        // Create a sample tag
-                        Map<String, Tag> tags = new HashMap<>();
-                        tags.put("urgent", new Tag("Urgent", "#FF0000"));
-                        testAppointment.setTags(tags);
-                        
-                        // Add to the appointments list
-                        appointments.add(testAppointment);
-                        Log.d(TAG, "Added test appointment: " + testAppointment);
-                    }
-                    
-                    // Check if there are any appointments to process
-                    if (!appointments.isEmpty()) {
-                        // Also fetch from Firestore to get tags
-                        fetchAppointmentsFromFirestore(appointments);
-                    } else {
-                        Log.w(TAG, "No appointments returned from API");
-                        displayAppointments(appointments);
-                    }
+                    // Always check Firestore, even if API returns appointments
+                    fetchFirestoreAppointments(appointments, userId, email);
                 } else {
                     try {
                         String errorBody = response.errorBody() != null ? 
                             response.errorBody().string() : "Unknown error";
-                        Log.e(TAG, "Failed to load appointments: " + errorBody);
+                        Log.e(TAG, "Failed to load appointments from API: " + errorBody);
                         Log.e(TAG, "HTTP Status Code: " + response.code());
-                        Toast.makeText(HomePage.this, 
-                            "Failed to load appointments: " + errorBody, Toast.LENGTH_SHORT).show();
                         
-                        // Create test data even on API error
-                        createAndDisplayTestData();
+                        // If API fails, proceed with Firestore
+                        Log.d(TAG, "Proceeding with Firestore fetch after API failure");
+                        fetchFirestoreAppointments(new ArrayList<>(), userId, email);
                     } catch (IOException e) {
                         e.printStackTrace();
-                        createAndDisplayTestData();
+                        fetchFirestoreAppointments(new ArrayList<>(), userId, email);
                     }
                 }
             }
 
             @Override
             public void onFailure(Call<List<Appointment>> call, Throwable t) {
-                Log.e(TAG, "Error fetching appointments", t);
-                Toast.makeText(HomePage.this,
-                    "Network error. Please check your connection.", Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Error fetching appointments from API", t);
                 
-                // Create test data on network failure
-                createAndDisplayTestData();
+                // If API fails, proceed with Firestore
+                Log.d(TAG, "Proceeding with Firestore fetch after API failure");
+                fetchFirestoreAppointments(new ArrayList<>(), userId, email);
+            }
+        });
+    }
+    
+    private void fetchFirestoreAppointments(List<Appointment> apiAppointments, String userId, String email) {
+        Log.d(TAG, "Fetching appointments directly from Firestore for user email: " + email);
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        
+        // Create a set of existing appointment IDs to avoid duplicates
+        Map<String, Appointment> appointmentMap = new HashMap<>();
+        for (Appointment appointment : apiAppointments) {
+            String id = getAppointmentId(appointment);
+            if (id != null) {
+                appointmentMap.put(id, appointment);
+            }
+        }
+        
+        // Query appointments where user is the creator
+        db.collection("appointments")
+            .whereEqualTo("createdBy", email)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                Log.d(TAG, "Found " + queryDocumentSnapshots.size() + " appointments created by user");
+                
+                for (com.google.firebase.firestore.QueryDocumentSnapshot document : queryDocumentSnapshots) {
+                    String appointmentId = document.getId();
+                    Log.d(TAG, "Processing appointment: " + appointmentId);
+                    
+                    try {
+                        // Convert Firestore document to Appointment
+                        Appointment appointment = document.toObject(Appointment.class);
+                        appointment.setId(appointmentId);
+                        appointment.setAppointmentId(appointmentId);
+                        appointmentMap.put(appointmentId, appointment);
+                        Log.d(TAG, "Added appointment: " + appointmentId + " - " + appointment.getTitle());
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error converting Firestore document to Appointment", e);
+                    }
+                }
+                
+                // Query appointments where user is a participant
+                db.collection("appointments")
+                    .whereArrayContains("participants", email)
+                    .get()
+                    .addOnSuccessListener(participantAppointments -> {
+                        Log.d(TAG, "Found " + participantAppointments.size() + " appointments where user is participant");
+                        
+                        for (com.google.firebase.firestore.QueryDocumentSnapshot document : participantAppointments) {
+                            String appointmentId = document.getId();
+                            
+                            if (!appointmentMap.containsKey(appointmentId)) {
+                                try {
+                                    Appointment appointment = document.toObject(Appointment.class);
+                                    appointment.setId(appointmentId);
+                                    appointment.setAppointmentId(appointmentId);
+                                    appointmentMap.put(appointmentId, appointment);
+                                    Log.d(TAG, "Added participant appointment: " + appointmentId + " - " + appointment.getTitle());
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error converting Firestore document to Appointment", e);
+                                }
+                            }
+                        }
+                        
+                        // Process all appointments
+                        List<Appointment> combinedAppointments = new ArrayList<>(appointmentMap.values());
+                        Log.d(TAG, "Total appointments found: " + combinedAppointments.size());
+                        
+                        if (!combinedAppointments.isEmpty()) {
+                            fetchAppointmentsFromFirestore(combinedAppointments);
+                        } else {
+                            Log.w(TAG, "No appointments found in Firestore");
+                            displayAppointments(combinedAppointments);
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error fetching participant appointments", e);
+                        List<Appointment> combinedAppointments = new ArrayList<>(appointmentMap.values());
+                        if (!combinedAppointments.isEmpty()) {
+                            fetchAppointmentsFromFirestore(combinedAppointments);
+                        } else {
+                            displayAppointments(combinedAppointments);
+                        }
+                    });
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error fetching created appointments", e);
+                if (!apiAppointments.isEmpty()) {
+                    fetchAppointmentsFromFirestore(apiAppointments);
+                } else {
+                    displayAppointments(apiAppointments);
             }
         });
     }
@@ -243,7 +311,7 @@ public class HomePage extends AppCompatActivity {
                             Map<String, Object> tagData = data != null ? (Map<String, Object>) data.get("tags") : null;
                             
                             // First, clear any existing tags to avoid duplicates or stale data
-                            apiAppointment.setTags(null);
+                            apiAppointment.setTags((Map<String, Object>)null);
                             
                             if (tagData != null && !tagData.isEmpty()) {
                                 Log.d(TAG, "Found " + tagData.size() + " tags in Firestore for appointment: " + finalAppointmentId);
@@ -266,7 +334,7 @@ public class HomePage extends AppCompatActivity {
                                 
                                 // Set the tags on the appointment only if we found valid ones
                                 if (!tags.isEmpty()) {
-                                    apiAppointment.setTags(tags);
+                                    apiAppointment.setTagsFromTagMap(tags);
                                     Log.d(TAG, "Set " + tags.size() + " tags on appointment: " + finalAppointmentId);
                                 }
                             } else {
@@ -310,24 +378,109 @@ public class HomePage extends AppCompatActivity {
         
         // Clear previous countdown views and stop timer if needed
         countdownTextViews.clear();
+        stopCountdownTimer();
         
-        if (appointments.isEmpty()) {
+        // Filter out past appointments and only keep upcoming ones
+        List<Appointment> upcomingAppointments = new ArrayList<>();
+        long currentTimeMillis = System.currentTimeMillis();
+        
+        for (Appointment appointment : appointments) {
+            String title = getAppointmentTitle(appointment);
+            
+            Object startTimeObj = null;
+            try {
+                try {
+                    startTimeObj = appointment.getClass().getMethod("getStartTimeValue").invoke(appointment);
+                } catch (Exception e) {
+                    try {
+                        startTimeObj = appointment.getClass().getMethod("getStartTime").invoke(appointment);
+                    } catch (Exception e2) {
+                        // Couldn't get start time
+                    }
+                }
+                
+                if (startTimeObj != null && startTimeObj instanceof Timestamp) {
+                    Timestamp startTimeTs = (Timestamp) startTimeObj;
+                    long startTimeMillis = startTimeTs.toDate().getTime();
+                    
+                    // Include appointments that:
+                    // 1. Are in the future (start time > current time)
+                    // 2. Started in the last 24 hours (to show appointments that just started or are about to end)
+                    // 3. Have a valid status
+                    String status = "unknown";
+                    try {
+                        status = appointment.getStatus();
+                    } catch (Exception ex) {
+                        try {
+                            status = (String) appointment.getClass().getMethod("getStatusValue").invoke(appointment);
+                        } catch (Exception ex2) {
+                            Log.e(TAG, "Could not determine appointment status", ex2);
+                        }
+                    }
+                    
+                    // Don't show rejected appointments
+                    if (status == null || !status.toUpperCase().equals("REJECTED")) {
+                        // Always include appointments with valid status
+                        upcomingAppointments.add(appointment);
+                        Log.d(TAG, "Keeping appointment: " + title + 
+                              " - Status: " + status + ", Start time: " + startTimeTs.toDate());
+                    } else {
+                        Log.d(TAG, "Filtering out rejected appointment: " + title);
+                    }
+                } else {
+                    // For appointments with no time, check status
+                    String status = "unknown";
+                    try {
+                        status = appointment.getStatus();
+                    } catch (Exception ex) {
+                        try {
+                            status = (String) appointment.getClass().getMethod("getStatusValue").invoke(appointment);
+                        } catch (Exception ex2) {
+                            Log.e(TAG, "Could not determine appointment status", ex2);
+                        }
+                    }
+                    
+                    // Include non-rejected appointments with unknown time
+                    if (status == null || !status.toUpperCase().equals("REJECTED")) {
+                        upcomingAppointments.add(appointment);
+                        Log.d(TAG, "Keeping appointment with unknown time: " + title +
+                              " - Status: " + status);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking appointment time", e);
+                // If there's an error, include the appointment to be safe
+                upcomingAppointments.add(appointment);
+            }
+        }
+        
+        // Sort upcoming appointments by start time (earliest first)
+        Collections.sort(upcomingAppointments, (a1, a2) -> {
+            long time1 = getAppointmentStartTimeMillis(a1);
+            long time2 = getAppointmentStartTimeMillis(a2);
+            return Long.compare(time1, time2);
+        });
+        
+        // Use the filtered list of upcoming appointments
+        if (upcomingAppointments.isEmpty()) {
             TextView noAppointmentsText = new TextView(this);
-            noAppointmentsText.setText("No appointments found");
-            noAppointmentsText.setPadding(32, 32, 32, 32);
+            noAppointmentsText.setText("No Upcoming Appointments\n\nYour upcoming appointments will appear here");
+            noAppointmentsText.setTextSize(16);
+            noAppointmentsText.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            noAppointmentsText.setPadding(32, 64, 32, 32);
             appointmentsContainer.addView(noAppointmentsText);
             stopCountdownTimer();
-            Log.w(TAG, "No appointments to display");
+            Log.w(TAG, "No upcoming appointments to display");
             return;
         }
 
         // Store current appointments for the timer
-        currentAppointments = appointments;
+        currentAppointments = upcomingAppointments;
         
-        Log.d(TAG, "Displaying " + appointments.size() + " appointments");
+        Log.d(TAG, "Displaying " + upcomingAppointments.size() + " upcoming appointments");
         LayoutInflater inflater = LayoutInflater.from(this);
 
-        for (Appointment appointment : appointments) {
+        for (Appointment appointment : upcomingAppointments) {
             // Log appointment details for debugging
             String appointmentId = getAppointmentId(appointment);
             if (appointmentId == null) {
@@ -337,11 +490,6 @@ public class HomePage extends AppCompatActivity {
             
             String title = getAppointmentTitle(appointment);
             Log.d(TAG, "Processing appointment - ID: " + appointmentId + ", Title: " + title);
-            
-            // Check specifically for the meeting with Marck Ramon
-            if (title.contains("Marck Ramon")) {
-                Log.d(TAG, "Processing the Meeting with Marck Ramon appointment!");
-            }
 
             CardView appointmentCard = (CardView) inflater.inflate(
                 R.layout.appointment_card_template, appointmentsContainer, false);
@@ -463,29 +611,40 @@ public class HomePage extends AppCompatActivity {
         
         // Start the countdown timer now that we have appointments to display
         startCountdownTimer();
+        Log.d(TAG, "Started countdown timer for " + upcomingAppointments.size() + " appointments");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         Log.d(TAG, "onResume - Refreshing appointments");
+        // Restart the timer if we have appointments
+        if (currentAppointments != null && !currentAppointments.isEmpty()) {
+            startCountdownTimer();
+        }
         fetchAppointments(); // Refresh appointments when returning to the page
+        fetchUnreadNotificationsCount(); // Check for unread notifications
     }
     
     @Override
     protected void onPause() {
         super.onPause();
-        stopCountdownTimer(); // Stop the timer when app is in background
+        // Always stop the timer in onPause
+        stopCountdownTimer();
     }
     
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        stopCountdownTimer(); // Ensure timer is stopped when activity is destroyed
+        // Always stop the timer in onDestroy
+        stopCountdownTimer();
     }
 
     private void startCountdownTimer() {
         if (!isTimerRunning) {
+            // Remove any existing callbacks to avoid duplicates
+            timerHandler.removeCallbacks(timerRunnable);
+            // Post the runnable to start the timer immediately
             timerHandler.post(timerRunnable);
             isTimerRunning = true;
             Log.d(TAG, "Countdown timer started");
@@ -505,6 +664,8 @@ public class HomePage extends AppCompatActivity {
             return;
         }
         
+        try {
+            // Update each appointment's countdown timer
         for (Appointment appointment : currentAppointments) {
             String appointmentId = getAppointmentId(appointment);
             if (appointmentId == null) continue;
@@ -513,6 +674,9 @@ public class HomePage extends AppCompatActivity {
             if (timerTextView != null) {
                 updateCountdownForAppointment(appointment, timerTextView);
             }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in updateAllCountdowns", e);
         }
     }
     
@@ -537,23 +701,66 @@ public class HomePage extends AppCompatActivity {
                 long nowMillis = System.currentTimeMillis();
                 long diffInMillis = startTimeMillis - nowMillis;
                 
+                String title = getAppointmentTitle(appointment);
+                
                 if (diffInMillis > 0) {
-                    long hours = TimeUnit.MILLISECONDS.toHours(diffInMillis);
+                    // Upcoming appointment
+                    long days = TimeUnit.MILLISECONDS.toDays(diffInMillis);
+                    long hours = TimeUnit.MILLISECONDS.toHours(diffInMillis) % 24;
                     long minutes = TimeUnit.MILLISECONDS.toMinutes(diffInMillis) % 60;
                     long seconds = TimeUnit.MILLISECONDS.toSeconds(diffInMillis) % 60;
                     
-                    String timeRemaining = String.format(Locale.US, 
+                    String timeRemaining;
+                    if (days > 0) {
+                        // Show days and hours for longer periods
+                        timeRemaining = String.format(Locale.US, 
+                            "%dd %dh %dm %ds remaining", days, hours, minutes, seconds);
+                        // Debug log for dynamic timer updates
+                        if (seconds % 10 == 0) { // Log every 10 seconds to avoid spam
+                            Log.d(TAG, "Timer update for " + title + ": " + timeRemaining);
+                        }
+                    } else if (hours > 0) {
+                        // Show hours and minutes for medium periods
+                        timeRemaining = String.format(Locale.US, 
                         "%dh %dm %ds remaining", hours, minutes, seconds);
+                        // Debug log for dynamic timer updates
+                        if (seconds % 5 == 0) { // Log every 5 seconds
+                            Log.d(TAG, "Timer update for " + title + ": " + timeRemaining);
+                        }
+                    } else {
+                        // Show minutes and seconds for short periods
+                        timeRemaining = String.format(Locale.US, 
+                            "%dm %ds remaining", minutes, seconds);
+                        // Debug log for dynamic timer updates
+                        Log.d(TAG, "Timer update for " + title + ": " + timeRemaining);
+                    }
                     timerTextView.setText(timeRemaining);
+                    timerTextView.setTextColor(getResources().getColor(R.color.text_dark));
                 } else {
-                    timerTextView.setText("Appointment time passed");
+                    // Past appointment or just starting
+                    long absDiff = Math.abs(diffInMillis);
+                    long minutes = TimeUnit.MILLISECONDS.toMinutes(absDiff);
+                    
+                    if (minutes < 5) {
+                        timerTextView.setText("Starting now");
+                        timerTextView.setTextColor(getResources().getColor(R.color.appointment_accepted_text));
+                    } else if (minutes < 60) {
+                        timerTextView.setText("Started " + minutes + " minutes ago");
+                        timerTextView.setTextColor(getResources().getColor(R.color.appointment_pending_text));
+                    } else {
+                        // Should not appear due to filtering
+                        timerTextView.setText("In progress");
+                        timerTextView.setTextColor(getResources().getColor(R.color.appointment_pending_text));
+                    }
                 }
             } else {
-                timerTextView.setText("Time not set");
+                timerTextView.setText("Time not available");
+                timerTextView.setTextColor(getResources().getColor(R.color.text_light));
             }
         } catch (Exception e) {
             Log.e(TAG, "Error calculating countdown", e);
             timerTextView.setText("Time not available");
+            timerTextView.setTextColor(getResources().getColor(R.color.text_light));
         }
     }
     
@@ -664,29 +871,8 @@ public class HomePage extends AppCompatActivity {
     }
 
     private void createAndDisplayTestData() {
-        Log.d(TAG, "Creating test appointments due to API failure");
-        List<Appointment> testAppointments = new ArrayList<>();
-        
-        // Create test appointment with Marck Ramon
-        Appointment testAppointment = new Appointment();
-        testAppointment.setId("test-appointment-id");
-        testAppointment.setAppointmentId("test-appointment-id");
-        testAppointment.setTitle("Meeting with Marck Ramon");
-        testAppointment.setDescription("This is a test appointment to diagnose display issues");
-        testAppointment.setStatus("confirmed");
-        
-        // Set timestamps (current time + 1 hour for startTime, +2 hours for endTime)
-        long now = System.currentTimeMillis();
-        com.google.firebase.Timestamp startTime = new com.google.firebase.Timestamp(now / 1000 + 3600, 0);
-        com.google.firebase.Timestamp endTime = new com.google.firebase.Timestamp(now / 1000 + 7200, 0);
-        testAppointment.setStartTime(startTime);
-        testAppointment.setEndTime(endTime);
-        
-        // Add to the list
-        testAppointments.add(testAppointment);
-        
-        Log.d(TAG, "Displaying test appointments");
-        displayAppointments(testAppointments);
+        Log.d(TAG, "Display empty appointments instead of test data");
+        displayAppointments(new ArrayList<>());
     }
 
     // Helper method to safely get title from an appointment
@@ -710,6 +896,34 @@ public class HomePage extends AppCompatActivity {
     }
 
     /**
+     * Helper method to get appointment start time in milliseconds for sorting
+     */
+    private long getAppointmentStartTimeMillis(Appointment appointment) {
+        Object startTimeObj = null;
+        try {
+            try {
+                startTimeObj = appointment.getClass().getMethod("getStartTimeValue").invoke(appointment);
+            } catch (Exception e) {
+                try {
+                    startTimeObj = appointment.getClass().getMethod("getStartTime").invoke(appointment);
+                } catch (Exception e2) {
+                    // Couldn't get start time
+                }
+            }
+            
+            if (startTimeObj != null && startTimeObj instanceof Timestamp) {
+                Timestamp startTimeTs = (Timestamp) startTimeObj;
+                return startTimeTs.toDate().getTime();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting appointment start time", e);
+        }
+        
+        // If we can't determine the time, return max value (so it sorts to the end)
+        return Long.MAX_VALUE;
+    }
+
+    /**
      * Format status string for user-friendly display
      */
     private String formatStatusForDisplay(String status) {
@@ -717,6 +931,7 @@ public class HomePage extends AppCompatActivity {
         
         switch (status.toUpperCase()) {
             case "PENDING_APPROVAL":
+            case "PENDING":
                 return "Pending Approval";
             case "SCHEDULED":
                 return "Scheduled";
@@ -737,6 +952,7 @@ public class HomePage extends AppCompatActivity {
         
         switch (status.toUpperCase()) {
             case "PENDING_APPROVAL":
+            case "PENDING":
                 return R.color.appointment_pending_text;
             case "SCHEDULED":
             case "ACCEPTED":  // Treat ACCEPTED as SCHEDULED for consistency
@@ -745,6 +961,67 @@ public class HomePage extends AppCompatActivity {
                 return R.color.appointment_rejected_text;
             default:
                 return R.color.text_dark;
+        }
+    }
+
+    private void showLogoutConfirmationDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Logout");
+        builder.setMessage("Do you want to log out?");
+        builder.setPositiveButton("Yes", (dialog, which) -> {
+            logout();
+        });
+        builder.setNegativeButton("No", (dialog, which) -> {
+            dialog.dismiss();
+        });
+        builder.create().show();
+    }
+    
+    private void logout() {
+        // Clear user data from SharedPreferences
+        SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.clear();
+        editor.apply();
+        
+        // Navigate to login form
+        Intent intent = new Intent(this, LoginFormActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
+    }
+
+    private void fetchUnreadNotificationsCount() {
+        SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+        String userId = prefs.getString("userId", "");
+        
+        if (userId.isEmpty()) {
+            Log.e(TAG, "User ID is empty, cannot fetch notifications");
+            return;
+        }
+        
+        // Query Firestore for unread notifications
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        db.collection("notifications")
+            .whereEqualTo("recipientId", userId)
+            .whereEqualTo("read", false)
+            .get()
+            .addOnSuccessListener(querySnapshot -> {
+                unreadNotificationCount = querySnapshot.size();
+                updateNotificationBadge();
+                Log.d(TAG, "Unread notifications: " + unreadNotificationCount);
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error fetching unread notifications", e);
+            });
+    }
+    
+    private void updateNotificationBadge() {
+        if (unreadNotificationCount > 0) {
+            tvNotificationBadge.setVisibility(View.VISIBLE);
+            tvNotificationBadge.setText(String.valueOf(unreadNotificationCount));
+        } else {
+            tvNotificationBadge.setVisibility(View.GONE);
         }
     }
 } 

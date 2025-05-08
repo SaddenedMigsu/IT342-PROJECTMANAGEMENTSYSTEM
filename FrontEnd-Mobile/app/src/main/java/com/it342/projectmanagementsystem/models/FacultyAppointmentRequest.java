@@ -5,6 +5,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.List;
 
 public class FacultyAppointmentRequest {
     @SerializedName("title")
@@ -21,6 +22,15 @@ public class FacultyAppointmentRequest {
     
     @SerializedName("userId")
     private String userId;
+    
+    @SerializedName("type")
+    private String type = "FACULTY";
+    
+    @SerializedName("location")
+    private String location = "Virtual Meeting";
+
+    @SerializedName("participants")
+    private List<String> participants;
 
     private static final SimpleDateFormat ISO_FORMAT;
     
@@ -50,6 +60,18 @@ public class FacultyAppointmentRequest {
     public void setUserId(String userId) {
         this.userId = userId;
     }
+    
+    public void setLocation(String location) {
+        this.location = location;
+    }
+    
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public void setParticipants(List<String> participants) {
+        this.participants = participants;
+    }
 
     public String getTitle() {
         return title;
@@ -69,5 +91,17 @@ public class FacultyAppointmentRequest {
 
     public String getUserId() {
         return userId;
+    }
+    
+    public String getLocation() {
+        return location;
+    }
+    
+    public String getType() {
+        return type;
+    }
+
+    public List<String> getParticipants() {
+        return participants;
     }
 } 

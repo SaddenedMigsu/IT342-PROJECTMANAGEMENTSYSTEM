@@ -39,8 +39,9 @@ public class RetrofitClient {
                 String token = prefs.getString("token", "");
                 Request original = chain.request();
                 
-                // Log the original request URL
+                // Log the original request URL and method
                 Log.d(TAG, "Making request to URL: " + original.url());
+                Log.d(TAG, "Request method: " + original.method());
                 
                 Request.Builder requestBuilder = original.newBuilder()
                         .header("Authorization", "Bearer " + token)
@@ -48,6 +49,11 @@ public class RetrofitClient {
                 
                 Request request = requestBuilder.build();
                 Log.d(TAG, "Request headers: " + request.headers());
+                
+                // Attempt to log request body for POST/PUT requests
+                if (request.body() != null && (original.method().equals("POST") || original.method().equals("PUT"))) {
+                    Log.d(TAG, "Request has body of size: " + request.body().contentLength() + " bytes");
+                }
                 
                 return chain.proceed(request);
             })
