@@ -11,6 +11,7 @@ import com.it342.projectmanagementsystem.model.User;
 import com.it342.projectmanagementsystem.service.JwtService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -136,6 +137,81 @@ public class AuthenticationController {
         } catch (Exception e) {
             logger.error("Login failed for identifier: {}. Error: {}", request.getIdentifier(), e.getMessage());
             return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    /**
+     * Endpoint to register or update FCM token for a user
+     * This is used by mobile devices to register for push notifications
+     */
+    @PostMapping("/fcm-token")
+    public ResponseEntity<Map<String, Object>> updateFcmToken(
+            @RequestBody Map<String, String> tokenRequest,
+            Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            String fcmToken = tokenRequest.get("fcmToken");
+            
+            logger.info("Updating FCM token for user: {}", userEmail);
+            
+            if (fcmToken == null || fcmToken.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "FCM token is required"
+                ));
+            }
+            
+            // Get user document by email
+            var userDocs = firestore.collection("users")
+                    .whereEqualTo("email", userEmail)
+                    .get()
+                    .get()
+                    .getDocuments();
+            
+            if (userDocs.isEmpty()) {
+                logger.error("User with email {} not found", userEmail);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "message", "User not found"
+                ));
+            }
+            
+            var userDoc = userDocs.iterator().next();
+            String userId = userDoc.getId();
+            
+            // Store or update FCM token in user's devices collection
+            Map<String, Object> deviceData = new HashMap<>();
+            deviceData.put("fcmToken", fcmToken);
+            deviceData.put("updatedAt", Timestamp.now());
+            deviceData.put("platform", "ANDROID"); // Assuming Android for now, could be passed in request
+            
+            // Use token as document ID to avoid duplicates from same device
+            firestore.collection("users")
+                    .document(userId)
+                    .collection("devices")
+                    .document(fcmToken) // Using token as document ID
+                    .set(deviceData)
+                    .get();
+            
+            // Also update user document with latest token for quick access
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("fcmToken", fcmToken);
+            updates.put("lastTokenUpdate", Timestamp.now());
+            
+            userDoc.getReference().update(updates).get();
+            
+            logger.info("Successfully updated FCM token for user {}", userEmail);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "FCM token updated successfully"
+            ));
+        } catch (Exception e) {
+            logger.error("Error updating FCM token: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                "success", false,
+                "message", "Error updating FCM token: " + e.getMessage()
+            ));
         }
     }
 } 
