@@ -56,16 +56,34 @@ public class CountdownTimerManager {
                     return;
                 }
                 
-                // Calculate remaining time
+                // Calculate remaining time in a more user-friendly format
+                String timeRemainingText;
+                
+                // Calculate days, hours, minutes, and seconds
+                long days = millisUntilFinished / (24 * 60 * 60 * 1000);
+                millisUntilFinished %= (24 * 60 * 60 * 1000);
                 long hours = millisUntilFinished / (60 * 60 * 1000);
                 millisUntilFinished %= (60 * 60 * 1000);
                 long minutes = millisUntilFinished / (60 * 1000);
                 millisUntilFinished %= (60 * 1000);
                 long seconds = millisUntilFinished / 1000;
                 
+                // Format remaining time based on the duration
+                if (days > 0) {
+                    // For more than 24 hours, show days and hours
+                    timeRemainingText = String.format(Locale.getDefault(), 
+                        "%dd %dh %dm %ds remaining", days, hours, minutes, seconds);
+                } else if (hours > 0) {
+                    // For less than a day but more than an hour
+                    timeRemainingText = String.format(Locale.getDefault(), 
+                        "%dh %dm %ds remaining", hours, minutes, seconds);
+                } else {
+                    // For less than an hour
+                    timeRemainingText = String.format(Locale.getDefault(), 
+                        "%dm %ds remaining", minutes, seconds);
+                }
+                
                 // Update UI with remaining time
-                String timeRemainingText = String.format(Locale.getDefault(), 
-                    "%dh %dm %ds remaining", hours, minutes, seconds);
                 textView.setText(timeRemainingText);
             }
             

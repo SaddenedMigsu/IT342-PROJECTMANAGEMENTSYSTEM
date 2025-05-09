@@ -38,7 +38,7 @@ public interface ApiService {
     @POST("/api/auth/logout")
     Call<Void> logout(@Header("Authorization") String token);
 
-    @POST("/api/appointments/request-faculty")
+    @POST("/api/appointments/create")
     Call<Appointment> createAppointment(
         @Body FacultyAppointmentRequest request,
         @Header("Authorization") String token
@@ -80,4 +80,30 @@ public interface ApiService {
     
     @GET("/api/users/students")
     Call<List<Map<String, Object>>> getAllStudents(@Header("Authorization") String token);
+    
+    @POST("/api/appointments/{appointmentId}/participants")
+    Call<Appointment> addParticipants(
+        @Path("appointmentId") String appointmentId,
+        @Body Map<String, List<String>> participantsBody,
+        @Header("Authorization") String token
+    );
+    
+    @DELETE("/api/appointments/{appointmentId}/participants/{participantId}")
+    Call<Appointment> removeParticipant(
+        @Path("appointmentId") String appointmentId,
+        @Path("participantId") String participantId,
+        @Header("Authorization") String token
+    );
+    
+    @POST("/api/appointments/request-faculty")
+    Call<Appointment> requestFacultyAppointment(
+        @Body FacultyAppointmentRequest request,
+        @Header("Authorization") String token
+    );
+    
+    @POST("/api/auth/fcm-token")
+    Call<Map<String, String>> updateFcmToken(
+        @Body Map<String, String> fcmTokenData,
+        @Header("Authorization") String token
+    );
 } 

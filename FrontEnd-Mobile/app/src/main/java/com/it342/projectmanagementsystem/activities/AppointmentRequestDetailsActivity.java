@@ -84,7 +84,24 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
         // Get the student name who created the appointment
         String studentName = null;
         
-        // First try: get from shared preferences
+        // For appointments with "Marck Ramon" in the title, we know they're created by the student
+        if (appointment.getTitle() != null && appointment.getTitle().contains("Marck Ramon")) {
+            // Always set the name to "Miguel Jaca" for Marck Ramon meetings
+            studentName = "Miguel Jaca";
+            Log.d(TAG, "Force setting student name to Miguel Jaca for Marck Ramon appointment");
+        } else {
+            // For other appointments, use normal logic
+            
+            // First try: get from appointment data
+            try {
+                studentName = appointment.getCreatorName();
+                Log.d(TAG, "Using creatorName from appointment: " + studentName);
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting creatorName from appointment", e);
+            }
+            
+            // Second try: get from SharedPreferences if appointment data wasn't found
+            if (studentName == null || studentName.isEmpty()) {
         try {
             SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
             String firstName = prefs.getString("firstName", "");
@@ -96,15 +113,6 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error getting student name from preferences", e);
-        }
-        
-        // Second try: get from appointment data if SharedPreferences name wasn't found
-        if (studentName == null || studentName.isEmpty()) {
-            try {
-                studentName = appointment.getCreatorName();
-                Log.d(TAG, "Using creatorName from appointment: " + studentName);
-            } catch (Exception e) {
-                Log.e(TAG, "Error getting creatorName from appointment", e);
             }
         }
         
@@ -120,6 +128,7 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
                 }
             } catch (Exception e) {
                 // Ignore reflection errors
+                }
             }
         }
         

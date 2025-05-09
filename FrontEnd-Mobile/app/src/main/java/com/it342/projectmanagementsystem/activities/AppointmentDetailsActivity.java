@@ -166,7 +166,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                             // If tags are missing but we had them before, restore them
                             if ((newTags == null || newTags.isEmpty()) && existingTags != null && !existingTags.isEmpty()) {
                                 Log.d(TAG, "Restoring tags that were missing in Firestore data");
-                                appointment.setTags(existingTags);
+                                appointment.setTagsFromTagMap(existingTags);
                             }
                             
                             updateUI();
@@ -745,7 +745,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                             // If tags are missing but we had them before, restore them
                             if ((newTags == null || newTags.isEmpty()) && existingTags != null && !existingTags.isEmpty()) {
                                 Log.d(TAG, "Restoring " + existingTags.size() + " tags that were missing in Firestore data");
-                                appointment.setTags(existingTags);
+                                appointment.setTagsFromTagMap(existingTags);
                             }
                             
                             updateUI();
@@ -1178,18 +1178,13 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 .addOnSuccessListener(aVoid -> {
                     Toast.makeText(this, "Tag saved successfully", Toast.LENGTH_SHORT).show();
                     
-                    // First try to remove any existing tag with the same name
-                    if (appointment.getTags() != null) {
-                        removeTagFromFirestore(tagName);
-                    }
-                    
                     // Update local appointment object
                     if (appointment.getTags() == null) {
                         Log.d(TAG, "Creating new tags map for appointment");
                     }
                     
-                    // Add the new tag
-                    addTag(tagName, tag);
+                    // Add the new tag to the appointment object
+                    appointment.addTag(tagName, tag);
                     
                     // Log the tags after adding
                     Map<String, Tag> updatedTags = appointment.getTags();
@@ -1254,8 +1249,8 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                     
                     // Update local appointment object
                     if (appointment.getTags() != null) {
-                        // Remove the tag using our safe method
-                        removeTag(tagName);
+                        // Remove the tag using our method
+                        appointment.removeTag(tagName);
                         
                         // Log the tags after removal
                         Map<String, Tag> updatedTags = appointment.getTags();
@@ -1375,10 +1370,7 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                         if (tagsData != null && !tagsData.isEmpty()) {
                             Log.d(TAG, "Found " + tagsData.size() + " tags in Firestore");
                             
-                            // Create tags map
-                            Map<String, Tag> tags = new HashMap<>();
-                            
-                            // Process each tag
+                            // Process each tag and add directly to the appointment
                             for (Map.Entry<String, Object> entry : tagsData.entrySet()) {
                                 if (entry.getValue() instanceof Map) {
                                     Map<String, Object> tagMap = (Map<String, Object>) entry.getValue();
@@ -1387,21 +1379,20 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                                     
                                     if (name != null && color != null) {
                                         Tag tag = new Tag(name, color);
-                                        tags.put(entry.getKey(), tag);
+                                        appointment.addTag(entry.getKey(), tag);
                                         Log.d(TAG, "Retrieved tag: " + name + ", Color: " + color);
                                     }
                                 }
                             }
                             
-                            // Update the appointment with the tags
-                            if (!tags.isEmpty()) {
-                                appointment.setTags(tags);
-                                // Update the UI to show the tags
-                                updateTagsDisplay();
-                            }
+                            // Update the UI with the fresh tags
+                            updateTagsDisplay();
                         } else {
                             Log.d(TAG, "No tags found in Firestore");
+                            updateTagsDisplay(); // Update UI to show no tags
                         }
+                    } else {
+                        Log.d(TAG, "Appointment not found in Firestore");
                     }
                 })
                 .addOnFailureListener(e -> {
@@ -1437,14 +1428,21 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 Log.e(TAG, "Error adding tag to appointment object", e);
                 // Fallback to manual approach if the method call fails
                 try {
-                    Map<String, Tag> tags = appointment.getTags();
-                    if (tags == null) {
-                        tags = new HashMap<>();
-                        appointment.setTags(tags);
+                    // Create a Map<String, Object> for the tag data
+                    Map<String, Object> tagData = new HashMap<>();
+                    tagData.put("name", tag.getName());
+                    tagData.put("color", tag.getColorForJava());
+                    
+                    // Get the existing tags map or create a new one
+                    Map<String, Object> tagsMap = appointment.tags;
+                    if (tagsMap == null) {
+                        tagsMap = new HashMap<>();
+                        appointment.setTags(tagsMap);
                     }
-                    if (tags instanceof HashMap) {
-                        ((HashMap<String, Tag>) tags).put(tagName, tag);
-                    }
+                    
+                    // Add the tag data to the map
+                    tagsMap.put(tagName, tagData);
+                    Log.d(TAG, "Added tag using fallback method");
                 } catch (Exception e2) {
                     Log.e(TAG, "Fallback tag addition also failed", e2);
                 }
@@ -1464,9 +1462,10 @@ public class AppointmentDetailsActivity extends AppCompatActivity {
                 Log.e(TAG, "Error removing tag from appointment object", e);
                 // Fallback to manual approach if the method call fails
                 try {
-                    Map<String, Tag> tags = appointment.getTags();
-                    if (tags != null && tags instanceof HashMap) {
-                        ((HashMap<String, Tag>) tags).remove(tagName);
+                    Map<String, Object> tagsMap = appointment.tags;
+                    if (tagsMap != null) {
+                        tagsMap.remove(tagName);
+                        Log.d(TAG, "Removed tag using fallback method");
                     }
                 } catch (Exception e2) {
                     Log.e(TAG, "Fallback tag removal also failed", e2);

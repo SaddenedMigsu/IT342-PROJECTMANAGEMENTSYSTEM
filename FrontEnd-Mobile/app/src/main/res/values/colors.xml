@@ -14,6 +14,7 @@
     <color name="text_light">#757575</color>
     <color name="maroon">#800000</color>
     <color name="gray">#757575</color>
+    <color name="colorAccent">#800000</color>
     
     <!-- Appointment status colors -->
     <color name="appointment_scheduled_bg">#E3F2FD</color>

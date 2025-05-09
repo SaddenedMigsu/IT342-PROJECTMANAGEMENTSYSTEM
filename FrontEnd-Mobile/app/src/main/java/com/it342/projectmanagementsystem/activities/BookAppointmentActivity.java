@@ -22,9 +22,11 @@ import com.it342.projectmanagementsystem.models.Appointment;
 import com.it342.projectmanagementsystem.models.FacultyAppointmentRequest;
 import com.it342.projectmanagementsystem.models.Faculty;
 import com.it342.projectmanagementsystem.models.TimestampObject;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
+import com.it342.projectmanagementsystem.models.LoginRequest;
+import com.it342.projectmanagementsystem.models.AuthResponse;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -34,9 +36,14 @@ import java.util.Locale;
 import java.util.TimeZone;
 import java.util.Map;
 import java.util.HashMap;
-import org.json.JSONObject;
-import org.json.JSONArray;
-import org.json.JSONException;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import com.it342.projectmanagementsystem.utils.NotificationHelper;
 
 public class BookAppointmentActivity extends AppCompatActivity {
     private static final String TAG = "BookAppointmentActivity";
@@ -248,6 +255,8 @@ public class BookAppointmentActivity extends AppCompatActivity {
             FacultyAppointmentRequest request = new FacultyAppointmentRequest();
             request.setTitle("Meeting with " + selectedFaculty.getFullName());
             request.setDescription(etDescription.getText().toString().trim() + "\nReason: " + etReason.getText().toString().trim());
+            request.setLocation("Virtual Meeting");
+            request.setType("FACULTY");
             
             // Create TimestampObject instances
             TimestampObject startTimeObj = TimestampObject.fromMillis(startTime.getTimeInMillis());
@@ -256,6 +265,16 @@ public class BookAppointmentActivity extends AppCompatActivity {
             request.setStartTime(startTimeObj);
             request.setEndTime(endTimeObj);
             request.setUserId(facultyUserId);
+
+            // Get the current user's ID from SharedPreferences
+            String currentUserId = prefs.getString("userId", "");
+            if (currentUserId != null && !currentUserId.isEmpty()) {
+                List<String> participants = new ArrayList<>();
+                participants.add(currentUserId); // Add student
+                participants.add(facultyUserId); // Add faculty
+                request.setParticipants(participants);
+                Log.d(TAG, "Added current user to participants: " + currentUserId + " and faculty: " + facultyUserId);
+            }
             
             Log.d(TAG, "Appointment request details:");
             Log.d(TAG, "Title: " + request.getTitle());
@@ -273,6 +292,28 @@ public class BookAppointmentActivity extends AppCompatActivity {
                 public void onResponse(Call<Appointment> call, Response<Appointment> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         Log.d(TAG, "Appointment created successfully");
+                        
+                        // Get current user's name for notification
+                        String studentFirstName = prefs.getString("firstName", "");
+                        String studentLastName = prefs.getString("lastName", "");
+                        String studentName = (studentFirstName + " " + studentLastName).trim();
+                        if (studentName.isEmpty()) {
+                            studentName = "A student";
+                        }
+                        
+                        // Create a notification for the faculty
+                        try {
+                            Appointment createdAppointment = response.body();
+                            NotificationHelper.createAppointmentRequestNotification(
+                                createdAppointment,
+                                studentName,
+                                facultyUserId
+                            );
+                            Log.d(TAG, "Notification created for faculty: " + facultyUserId);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error creating notification", e);
+                        }
+                        
                         Toast.makeText(BookAppointmentActivity.this, 
                             "Appointment request sent successfully!", Toast.LENGTH_LONG).show();
                         startActivity(new Intent(BookAppointmentActivity.this, HomePage.class));
@@ -281,11 +322,19 @@ public class BookAppointmentActivity extends AppCompatActivity {
                         try {
                             String errorBody = response.errorBody() != null ? 
                                 response.errorBody().string() : "Unknown error";
-                            Log.e(TAG, "Failed to create appointment. Error: " + errorBody);
+                            Log.e(TAG, "Failed to create appointment. Error: " + errorBody + ", Code: " + response.code());
                             
                             // Try to parse the error as JSON to check for conflicts
                             if (errorBody.contains("conflicts")) {
                                 handleConflictError(errorBody);
+                            } else if (response.code() == 403) {
+                                // Handle authentication error
+                                Toast.makeText(BookAppointmentActivity.this,
+                                    "You don't have permission to create appointments. Please check your account type and login status.", 
+                                    Toast.LENGTH_LONG).show();
+                                    
+                                // Try direct JSON method as fallback
+                                makeDirectApiCall(request, token);
                             } else {
                                 // Default error message for non-conflict errors
                                 Toast.makeText(BookAppointmentActivity.this,
@@ -439,6 +488,120 @@ public class BookAppointmentActivity extends AppCompatActivity {
                 .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
                 .setIcon(android.R.drawable.ic_dialog_alert)
                 .show();
+        }
+    }
+
+    private void makeDirectApiCall(FacultyAppointmentRequest request, String token) {
+        try {
+            // Create a direct JSON object
+            JSONObject jsonBody = new JSONObject();
+            jsonBody.put("title", request.getTitle());
+            jsonBody.put("description", request.getDescription());
+            jsonBody.put("startTime", request.getStartTime());
+            jsonBody.put("endTime", request.getEndTime());
+            jsonBody.put("userId", request.getUserId());
+            jsonBody.put("type", "FACULTY");
+            jsonBody.put("location", "Virtual Meeting");
+            
+            // Create RequestBody
+            RequestBody requestBody = RequestBody.create(
+                MediaType.parse("application/json; charset=utf-8"),
+                jsonBody.toString()
+            );
+            
+            // Create Request
+            Request okRequest = new Request.Builder()
+                .url("https://it342-projectmanagementsystem.onrender.com/api/appointments/request-faculty")
+                .addHeader("Authorization", "Bearer " + token)
+                .post(requestBody)
+                .build();
+            
+            // Create OkHttpClient
+            OkHttpClient client = new OkHttpClient.Builder()
+                .build();
+            
+            // Execute the request asynchronously
+            client.newCall(okRequest).enqueue(new okhttp3.Callback() {
+                @Override
+                public void onFailure(okhttp3.Call call, IOException e) {
+                    runOnUiThread(() -> {
+                        Log.e(TAG, "Direct API call failed", e);
+                        Toast.makeText(BookAppointmentActivity.this,
+                            "Network error. Please check your connection.", Toast.LENGTH_LONG).show();
+                    });
+                }
+                
+                @Override
+                public void onResponse(okhttp3.Call call, okhttp3.Response response) throws IOException {
+                    runOnUiThread(() -> {
+                        try {
+                            if (response.isSuccessful()) {
+                                Log.d(TAG, "Appointment created successfully via direct API call");
+                                
+                                // Get appointment ID from response
+                                String responseBody = response.body().string();
+                                JSONObject responseJson = new JSONObject(responseBody);
+                                String appointmentId = responseJson.optString("id", "");
+                                
+                                // Get current user's name for notification
+                                SharedPreferences sharedPrefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+                                String studentFirstName = sharedPrefs.getString("firstName", "");
+                                String studentLastName = sharedPrefs.getString("lastName", "");
+                                String studentName = (studentFirstName + " " + studentLastName).trim();
+                                if (studentName.isEmpty()) {
+                                    studentName = "A student";
+                                }
+                                
+                                // Create a notification for the faculty
+                                if (!appointmentId.isEmpty()) {
+                                    // Create a simplified appointment object for the notification
+                                    Appointment createdAppointment = new Appointment();
+                                    createdAppointment.setId(appointmentId);
+                                    createdAppointment.setTitle(request.getTitle());
+                                    
+                                    // Try to parse and set the date/time
+                                    try {
+                                        SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                                        isoFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                                        
+                                        if (request.getStartTime() != null) {
+                                            com.google.firebase.Timestamp startTime = 
+                                                new com.google.firebase.Timestamp(isoFormat.parse(request.getStartTime()));
+                                            createdAppointment.setStartTime(startTime);
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error parsing date/time for notification", e);
+                                    }
+                                    
+                                    NotificationHelper.createAppointmentRequestNotification(
+                                        createdAppointment,
+                                        studentName,
+                                        request.getUserId()
+                                    );
+                                    Log.d(TAG, "Notification created for faculty: " + request.getUserId());
+                                }
+                                
+                                Toast.makeText(BookAppointmentActivity.this, 
+                                    "Appointment request sent successfully!", Toast.LENGTH_LONG).show();
+                                startActivity(new Intent(BookAppointmentActivity.this, HomePage.class));
+                                finish();
+                            } else {
+                                String errorBody = response.body().string();
+                                Log.e(TAG, "Direct API call failed. Error: " + errorBody);
+                                Toast.makeText(BookAppointmentActivity.this,
+                                    "Failed to create appointment: " + errorBody, Toast.LENGTH_LONG).show();
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error processing direct API response", e);
+                            Toast.makeText(BookAppointmentActivity.this,
+                                "Error processing response: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error making direct API call", e);
+            Toast.makeText(this, "Error creating appointment: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 } 
