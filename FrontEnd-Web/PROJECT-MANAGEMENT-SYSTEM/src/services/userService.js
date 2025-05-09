@@ -55,6 +55,15 @@ const userService = {
       throw error;
     }
   },
+
+  adminEditUser: async (userId, userData) => {
+    try {
+      const response = await api.put(`/users/admin/edit-user/${userId}`, userData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  },
 };
 
 export default userService;

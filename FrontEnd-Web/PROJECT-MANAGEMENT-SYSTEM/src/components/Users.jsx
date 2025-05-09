@@ -23,6 +23,7 @@ import {
   FormControl,
   InputLabel,
   Checkbox,
+  FormHelperText,
 } from "@mui/material";
 import { Search, MoreVert, Delete, Edit } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
@@ -73,6 +74,8 @@ const Users = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState(null);
   const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', role: '', password: '' });
+  const [editError, setEditError] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   // Check authentication on component mount
   useEffect(() => {
@@ -237,6 +240,64 @@ const Users = () => {
   const handleEditCancel = () => {
     setEditDialogOpen(false);
     setUserToEdit(null);
+  };
+
+  const handleEditSave = async () => {
+    try {
+      setEditLoading(true);
+      setEditError(null);
+
+      // Validate form
+      if (!editForm.firstName || !editForm.lastName || !editForm.email || !editForm.role) {
+        setEditError("All fields are required");
+        return;
+      }
+
+      // Log the payload for debugging
+      console.log('Sending edit payload:', {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        role: editForm.role
+      });
+
+      // Call the API to update the user
+      const response = await userService.adminEditUser(userToEdit.id, {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        role: editForm.role
+      });
+
+      // Log the response for debugging
+      console.log('Edit user response:', response);
+
+      // Update the users list with the updated user data
+      setUsers(users.map(user => 
+        user.id === userToEdit.id 
+          ? {
+              ...user,
+              name: `${editForm.firstName} ${editForm.lastName}`,
+              email: editForm.email,
+              role: editForm.role
+            }
+          : user
+      ));
+
+      // Close the dialog and reset form
+      setEditDialogOpen(false);
+      setUserToEdit(null);
+      setEditForm({ firstName: '', lastName: '', email: '', role: '', password: '' });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      // Show the actual backend error message if available
+      setEditError(
+        typeof error === 'string' ? error :
+        error?.message || JSON.stringify(error) || "Failed to update user"
+      );
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   // Filter and sort users
@@ -1064,6 +1125,19 @@ const Users = () => {
           Edit User
         </DialogTitle>
         <DialogContent>
+          {editError && (
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mb: 2,
+                borderRadius: '16px',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                bgcolor: 'rgba(239, 68, 68, 0.05)',
+              }}
+            >
+              {editError}
+            </Alert>
+          )}
           <TextField
             margin="dense"
             label="First Name"
@@ -1073,6 +1147,8 @@ const Users = () => {
             fullWidth
             variant="outlined"
             sx={{ mb: 2 }}
+            error={editError && !editForm.firstName}
+            helperText={editError && !editForm.firstName ? "First name is required" : ""}
           />
           <TextField
             margin="dense"
@@ -1083,6 +1159,8 @@ const Users = () => {
             fullWidth
             variant="outlined"
             sx={{ mb: 2 }}
+            error={editError && !editForm.lastName}
+            helperText={editError && !editForm.lastName ? "Last name is required" : ""}
           />
           <TextField
             margin="dense"
@@ -1093,8 +1171,10 @@ const Users = () => {
             fullWidth
             variant="outlined"
             sx={{ mb: 2 }}
+            error={editError && !editForm.email}
+            helperText={editError && !editForm.email ? "Email is required" : ""}
           />
-          <FormControl fullWidth sx={{ mb: 2 }}>
+          <FormControl fullWidth sx={{ mb: 2 }} error={editError && !editForm.role}>
             <InputLabel id="edit-role-label">Role</InputLabel>
             <Select
               labelId="edit-role-label"
@@ -1107,6 +1187,9 @@ const Users = () => {
               <MenuItem value="ADMIN">ADMIN</MenuItem>
               <MenuItem value="STUDENT">STUDENT</MenuItem>
             </Select>
+            {editError && !editForm.role && (
+              <FormHelperText>Role is required</FormHelperText>
+            )}
           </FormControl>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
@@ -1121,11 +1204,14 @@ const Users = () => {
               textTransform: 'none',
               fontWeight: 500
             }}
+            disabled={editLoading}
           >
             Cancel
           </Button>
           <Button
             variant="contained"
+            onClick={handleEditSave}
+            disabled={editLoading}
             sx={{
               bgcolor: '#8B0000',
               color: 'white',
@@ -1135,11 +1221,18 @@ const Users = () => {
               borderRadius: '12px',
               textTransform: 'none',
               fontWeight: 500,
-              px: 3
+              px: 3,
+              '&.Mui-disabled': {
+                bgcolor: 'rgba(139, 0, 0, 0.5)',
+                color: 'rgba(255, 255, 255, 0.7)'
+              }
             }}
-            // onClick={handleEditSave} // To be implemented
           >
-            Save
+            {editLoading ? (
+              <CircularProgress size={24} sx={{ color: 'white' }} />
+            ) : (
+              'Save'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
