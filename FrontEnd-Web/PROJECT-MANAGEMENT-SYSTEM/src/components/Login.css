@@ -169,3 +169,44 @@ body,
     font-size: 0.85rem;
   }
 }
+
+/* Password input container */
+.password-input-container {
+  position: relative;
+  width: 100%;
+  margin-bottom: 0.9rem;
+}
+
+.password-input-container .input-field {
+  padding-right: 45px; /* Make room for the toggle button */
+  line-height: 1;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  bottom: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 1;
+  color: #64748b;
+  border-radius: 50%;
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 32px;
+}
+
+.password-toggle:hover {
+  color: #8b0000;
+  background-color: rgba(139, 0, 0, 0.1);
+}
+
+.password-toggle svg {
+  width: 20px;
+  height: 20px;
+}

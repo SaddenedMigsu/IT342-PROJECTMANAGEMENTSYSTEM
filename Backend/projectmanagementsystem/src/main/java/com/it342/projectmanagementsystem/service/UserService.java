@@ -355,4 +355,86 @@ public class UserService {
 
         return students;
     }
+
+    public void adminEditUser(String adminEmail, String userId, Map<String, Object> updates) throws Exception {
+        // Check if admin exists and has admin role
+        var adminDocs = firestore.collection("users")
+                .whereEqualTo("email", adminEmail)
+                .get()
+                .get()
+                .getDocuments();
+        
+        if (adminDocs.isEmpty()) {
+            throw new SecurityException("Admin user not found");
+        }
+
+        var adminDoc = adminDocs.iterator().next();
+        if (!"ADMIN".equals(adminDoc.getString("role"))) {
+            throw new SecurityException("User does not have admin privileges");
+        }
+
+        // Check if the user to edit exists
+        DocumentSnapshot userDoc = firestore.collection("users").document(userId).get().get();
+        if (!userDoc.exists()) {
+            throw new IllegalArgumentException("User not found: " + userId);
+        }
+
+        // Prepare validated updates
+        Map<String, Object> validUpdates = new HashMap<>();
+
+        if (updates.containsKey("firstName")) {
+            validUpdates.put("firstName", updates.get("firstName"));
+        }
+        
+        if (updates.containsKey("lastName")) {
+            validUpdates.put("lastName", updates.get("lastName"));
+        }
+        
+        if (updates.containsKey("email")) {
+            String newEmail = (String) updates.get("email");
+            String currentEmail = userDoc.getString("email");
+            
+            // Only process email update if it's different from current email
+            if (!newEmail.equals(currentEmail)) {
+                // Check if email is already in use by another user
+                var existingUserDocs = firestore.collection("users")
+                        .whereEqualTo("email", newEmail)
+                        .get()
+                        .get()
+                        .getDocuments();
+                
+                if (!existingUserDocs.isEmpty() && !existingUserDocs.iterator().next().getId().equals(userId)) {
+                    throw new IllegalArgumentException("Email is already in use");
+                }
+                
+                validUpdates.put("email", newEmail);
+
+                // Update email in Firebase Auth
+                try {
+                    UserRecord userRecord = firebaseAuth.getUser(userId);
+                    UserRecord.UpdateRequest updateRequest = new UserRecord.UpdateRequest(userId)
+                            .setEmail(newEmail);
+                    firebaseAuth.updateUser(updateRequest);
+                } catch (FirebaseAuthException e) {
+                    System.err.println("Failed to update email in Firebase Auth: " + e.getMessage());
+                    // Continue with Firestore update anyway
+                }
+            }
+        }
+        
+        if (updates.containsKey("role")) {
+            String newRole = (String) updates.get("role");
+            // Validate role is one of the allowed values
+            if (!newRole.equals("ADMIN") && !newRole.equals("FACULTY") && !newRole.equals("STUDENT")) {
+                throw new IllegalArgumentException("Invalid role: " + newRole);
+            }
+            validUpdates.put("role", newRole);
+        }
+
+        // Update the user in Firestore if we have valid updates
+        if (!validUpdates.isEmpty()) {
+            validUpdates.put("updatedAt", FieldValue.serverTimestamp());
+            firestore.collection("users").document(userId).update(validUpdates).get();
+        }
+    }
 }

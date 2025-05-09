@@ -344,4 +344,44 @@ public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
             return ResponseEntity.internalServerError().body("Failed to get total active users: " + e.getMessage());
         }
     }
+
+    // Admin edit user endpoint
+    @PutMapping("/admin/edit-user/{userId}")
+    public ResponseEntity<?> adminEditUser(
+            @PathVariable String userId, 
+            @RequestBody Map<String, Object> updates, 
+            Authentication authentication) {
+        try {
+            String adminEmail = authentication.getName();
+            logger.info("Admin {} attempting to edit user: {}", adminEmail, userId);
+
+            // Validate required fields
+            if (!updates.containsKey("firstName") || !updates.containsKey("lastName") || 
+                !updates.containsKey("email") || !updates.containsKey("role")) {
+                return ResponseEntity.badRequest().body("Missing required fields");
+            }
+
+            userService.adminEditUser(adminEmail, userId, updates);
+
+            logger.info("User {} successfully edited by admin {}", userId, adminEmail);
+            
+            // Send back the updated user information
+            User updatedUser = userService.getUserById(userId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "User updated successfully");
+            response.put("user", updatedUser);
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (SecurityException e) {
+            logger.error("Unauthorized access attempt: {}", e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error editing user: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SC_INTERNAL_SERVER_ERROR).body("Update failed: " + e.getMessage());
+        }
+    }
 }

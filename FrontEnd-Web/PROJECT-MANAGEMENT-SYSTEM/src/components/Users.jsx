@@ -23,8 +23,9 @@ import {
   FormControl,
   InputLabel,
   Checkbox,
+  FormHelperText,
 } from "@mui/material";
-import { Search, MoreVert, Delete } from "@mui/icons-material";
+import { Search, MoreVert, Delete, Edit } from "@mui/icons-material";
 import AdminLayout from "./AdminLayout";
 import userService from "../services/userService";
 import authService from "../services/authService";
@@ -70,6 +71,11 @@ const Users = () => {
   const [deleteError, setDeleteError] = useState(null);
   const [availableRoles, setAvailableRoles] = useState(["All"]);
   const [imageLoadErrors, setImageLoadErrors] = useState({});
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState(null);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', role: '', password: '' });
+  const [editError, setEditError] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   // Check authentication on component mount
   useEffect(() => {
@@ -210,6 +216,88 @@ const Users = () => {
       ...prev,
       [userId]: true
     }));
+  };
+
+  const handleEditClick = (user) => {
+    setUserToEdit(user);
+    // Split name into first and last for the form
+    const [firstName, ...lastNameArr] = user.name.split(' ');
+    setEditForm({
+      firstName: firstName || '',
+      lastName: lastNameArr.join(' ') || '',
+      email: user.email || '',
+      role: user.role || '',
+      password: ''
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditCancel = () => {
+    setEditDialogOpen(false);
+    setUserToEdit(null);
+  };
+
+  const handleEditSave = async () => {
+    try {
+      setEditLoading(true);
+      setEditError(null);
+
+      // Validate form
+      if (!editForm.firstName || !editForm.lastName || !editForm.email || !editForm.role) {
+        setEditError("All fields are required");
+        return;
+      }
+
+      // Log the payload for debugging
+      console.log('Sending edit payload:', {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        role: editForm.role
+      });
+
+      // Call the API to update the user
+      const response = await userService.adminEditUser(userToEdit.id, {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        role: editForm.role
+      });
+
+      // Log the response for debugging
+      console.log('Edit user response:', response);
+
+      // Update the users list with the updated user data
+      setUsers(users.map(user => 
+        user.id === userToEdit.id 
+          ? {
+              ...user,
+              name: `${editForm.firstName} ${editForm.lastName}`,
+              email: editForm.email,
+              role: editForm.role
+            }
+          : user
+      ));
+
+      // Close the dialog and reset form
+      setEditDialogOpen(false);
+      setUserToEdit(null);
+      setEditForm({ firstName: '', lastName: '', email: '', role: '', password: '' });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      // Show the actual backend error message if available
+      setEditError(
+        typeof error === 'string' ? error :
+        error?.message || JSON.stringify(error) || "Failed to update user"
+      );
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   // Filter and sort users
@@ -847,6 +935,22 @@ const Users = () => {
                 <Box>
                   <IconButton
                     size="small"
+                    onClick={() => handleEditClick(user)}
+                    sx={{
+                      color: "#daa520",
+                      transition: 'all 0.2s ease',
+                      mr: 1,
+                      "&:hover": {
+                        bgcolor: "rgba(218, 165, 32, 0.12)",
+                        color: "#b8860b",
+                        transform: 'scale(1.1)'
+                      },
+                    }}
+                  >
+                    <Edit sx={{ fontSize: 20 }} />
+                  </IconButton>
+                  <IconButton
+                    size="small"
                     onClick={() => handleDeleteClick(user)}
                     sx={{
                       color: "#8B0000",
@@ -982,10 +1086,10 @@ const Users = () => {
             onClick={handleDeleteConfirm}
             variant="contained"
             sx={{
-              bgcolor: '#ef4444',
+              bgcolor: '#8B0000',
               color: 'white',
               '&:hover': {
-                bgcolor: '#dc2626',
+                bgcolor: '#6B0000',
               },
               borderRadius: '12px',
               textTransform: 'none',
@@ -994,6 +1098,141 @@ const Users = () => {
             }}
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={handleEditCancel}
+        PaperProps={{
+          sx: {
+            borderRadius: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: 2
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontSize: '1.25rem',
+            fontWeight: 600,
+            color: '#1a1f36',
+            pb: 1
+          }}
+        >
+          Edit User
+        </DialogTitle>
+        <DialogContent>
+          {editError && (
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mb: 2,
+                borderRadius: '16px',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                bgcolor: 'rgba(239, 68, 68, 0.05)',
+              }}
+            >
+              {editError}
+            </Alert>
+          )}
+          <TextField
+            margin="dense"
+            label="First Name"
+            name="firstName"
+            value={editForm.firstName}
+            onChange={handleEditFormChange}
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+            error={editError && !editForm.firstName}
+            helperText={editError && !editForm.firstName ? "First name is required" : ""}
+          />
+          <TextField
+            margin="dense"
+            label="Last Name"
+            name="lastName"
+            value={editForm.lastName}
+            onChange={handleEditFormChange}
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+            error={editError && !editForm.lastName}
+            helperText={editError && !editForm.lastName ? "Last name is required" : ""}
+          />
+          <TextField
+            margin="dense"
+            label="Email"
+            name="email"
+            value={editForm.email}
+            onChange={handleEditFormChange}
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+            error={editError && !editForm.email}
+            helperText={editError && !editForm.email ? "Email is required" : ""}
+          />
+          <FormControl fullWidth sx={{ mb: 2 }} error={editError && !editForm.role}>
+            <InputLabel id="edit-role-label">Role</InputLabel>
+            <Select
+              labelId="edit-role-label"
+              name="role"
+              value={editForm.role}
+              label="Role"
+              onChange={handleEditFormChange}
+            >
+              <MenuItem value="FACULTY">FACULTY</MenuItem>
+              <MenuItem value="ADMIN">ADMIN</MenuItem>
+              <MenuItem value="STUDENT">STUDENT</MenuItem>
+            </Select>
+            {editError && !editForm.role && (
+              <FormHelperText>Role is required</FormHelperText>
+            )}
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            onClick={handleEditCancel}
+            sx={{
+              color: '#64748B',
+              '&:hover': {
+                bgcolor: 'rgba(100, 116, 139, 0.1)',
+              },
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+            disabled={editLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleEditSave}
+            disabled={editLoading}
+            sx={{
+              bgcolor: '#8B0000',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#6B0000',
+              },
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 500,
+              px: 3,
+              '&.Mui-disabled': {
+                bgcolor: 'rgba(139, 0, 0, 0.5)',
+                color: 'rgba(255, 255, 255, 0.7)'
+              }
+            }}
+          >
+            {editLoading ? (
+              <CircularProgress size={24} sx={{ color: 'white' }} />
+            ) : (
+              'Save'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
