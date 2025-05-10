@@ -26,6 +26,8 @@ import com.it342.projectmanagementsystem.activities.NotificationsActivity;
 import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.utils.Constants;
+import com.it342.projectmanagementsystem.utils.NotificationHelper;
+import com.it342.projectmanagementsystem.utils.NotificationUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -45,6 +47,9 @@ public class PMSFirebaseMessagingService extends FirebaseMessagingService {
         
         // Save FCM token locally
         saveTokenToPrefs(token);
+        
+        // Also save in NotificationUtils for consistency
+        NotificationUtils.saveFCMToken(this, token);
         
         // Send token to server if user is logged in
         if (isUserLoggedIn()) {
@@ -92,30 +97,45 @@ public class PMSFirebaseMessagingService extends FirebaseMessagingService {
     }
     
     private static void sendTokenToServer(Context context, String fcmToken, String authToken) {
-        ApiService apiService = RetrofitClient.getInstance().getApiService();
-        Map<String, String> tokenData = new HashMap<>();
-        tokenData.put("fcmToken", fcmToken);
-        
-        apiService.updateFcmToken(tokenData, "Bearer " + authToken).enqueue(new Callback<Map<String, String>>() {
-            @Override
-            public void onResponse(Call<Map<String, String>> call, Response<Map<String, String>> response) {
-                if (response.isSuccessful()) {
-                    Log.d(TAG, "FCM token sent to server successfully");
-                } else {
-                    try {
-                        Log.e(TAG, "Failed to send FCM token to server: " + 
-                            (response.errorBody() != null ? response.errorBody().string() : "Unknown error"));
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error parsing error response", e);
+        try {
+            ApiService apiService = RetrofitClient.getInstance().getApiService();
+            Map<String, String> tokenData = new HashMap<>();
+            tokenData.put("fcmToken", fcmToken);
+            
+            // Add user email for debugging
+            SharedPreferences sharedPreferences = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+            String email = sharedPreferences.getString(Constants.KEY_EMAIL, "");
+            if (!email.isEmpty()) {
+                tokenData.put("email", email);
+            }
+            
+            Log.d(TAG, "Sending FCM token to server: " + fcmToken);
+            Log.d(TAG, "User email: " + (email.isEmpty() ? "unknown" : email));
+            
+            apiService.updateFcmToken(tokenData, "Bearer " + authToken).enqueue(new Callback<Map<String, String>>() {
+                @Override
+                public void onResponse(Call<Map<String, String>> call, Response<Map<String, String>> response) {
+                    if (response.isSuccessful()) {
+                        Log.d(TAG, "FCM token sent to server successfully");
+                    } else {
+                        try {
+                            String errorBody = response.errorBody() != null ? response.errorBody().string() : "Unknown error";
+                            Log.e(TAG, "Failed to send FCM token to server: " + errorBody +
+                                " (Status code: " + response.code() + ")");
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error parsing error response", e);
+                        }
                     }
                 }
-            }
 
-            @Override
-            public void onFailure(Call<Map<String, String>> call, Throwable t) {
-                Log.e(TAG, "Network error when sending FCM token to server", t);
-            }
-        });
+                @Override
+                public void onFailure(Call<Map<String, String>> call, Throwable t) {
+                    Log.e(TAG, "Network error when sending FCM token to server: " + t.getMessage(), t);
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Exception when sending FCM token to server: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -125,124 +145,88 @@ public class PMSFirebaseMessagingService extends FirebaseMessagingService {
         Map<String, String> data = remoteMessage.getData();
         Log.d(TAG, "Message data payload: " + data);
 
-        // Check if message contains a notification payload
+        // Extract notification data
+        String title = null;
+        String body = null;
+        
         if (remoteMessage.getNotification() != null) {
-            Log.d(TAG, "Message Notification Body: " + remoteMessage.getNotification().getBody());
-            String title = remoteMessage.getNotification().getTitle();
-            String body = remoteMessage.getNotification().getBody();
-            
-            handleNotification(title, body, data);
-        } else if (!data.isEmpty()) {
-            // Handle data payload
-            String title = data.get("title");
-            String body = data.get("body");
-            
-            if (title != null && body != null) {
-                handleNotification(title, body, data);
-            }
+            title = remoteMessage.getNotification().getTitle();
+            body = remoteMessage.getNotification().getBody();
         }
+        
+        if ((title == null || body == null) && data != null) {
+            // Try to get title and body from data payload
+            title = data.get("title");
+            body = data.get("body");
+        }
+        
+        if (title == null || body == null) {
+            Log.e(TAG, "Cannot show notification: missing title or body");
+            return;
+        }
+        
+        // Get other data
+        String appointmentId = data != null ? data.get("appointmentId") : null;
+        String type = data != null ? data.get("type") : null;
+        
+        // Show notification
+        showNotification(title, body, appointmentId, type);
+        
+        // Store notification in Firestore for persistence
+        storeNotificationInFirestore(title, body, data);
     }
     
-    private void handleNotification(String title, String messageBody, Map<String, String> data) {
-        String type = data.get("type");
-        String appointmentId = data.get("appointmentId");
-        
-        Intent intent;
-        int notificationPriority = NotificationCompat.PRIORITY_DEFAULT;
-        
-        if (type != null) {
-            switch (type) {
-                case "APPOINTMENT_REQUEST":
-                    intent = new Intent(this, ManageAppointmentRequestsActivity.class);
-                    notificationPriority = NotificationCompat.PRIORITY_HIGH;
-                    break;
-                case "FACULTY_APPOINTMENT_REQUEST":
-                    intent = new Intent(this, ManageAppointmentRequestsActivity.class);
-                    notificationPriority = NotificationCompat.PRIORITY_HIGH;
-                    break;
-                case "APPOINTMENT_UPDATED":
-                    intent = new Intent(this, AppointmentDetailsActivity.class);
-                    if (appointmentId != null) {
-                        intent.putExtra("APPOINTMENT_ID", appointmentId);
-                    }
-                    break;
-                case "APPOINTMENT_CANCELLED":
-                    intent = new Intent(this, NotificationsActivity.class);
-                    break;
-                case "APPOINTMENT_REMINDER":
-                    intent = new Intent(this, AppointmentDetailsActivity.class);
-                    if (appointmentId != null) {
-                        intent.putExtra("APPOINTMENT_ID", appointmentId);
-                    }
-                    notificationPriority = NotificationCompat.PRIORITY_HIGH;
-                    break;
-                default:
-                    // Default to showing the notifications screen
-                    intent = new Intent(this, NotificationsActivity.class);
-                    break;
-            }
-        } else {
-            // If no type specified, default to notifications screen
-            intent = new Intent(this, NotificationsActivity.class);
-        }
-        
-        // Add any additional data to the intent
-        if (appointmentId != null) {
-            intent.putExtra("APPOINTMENT_ID", appointmentId);
-        }
-        
-        // Add all data values as extras
-        for (Map.Entry<String, String> entry : data.entrySet()) {
-            intent.putExtra(entry.getKey(), entry.getValue());
-        }
-        
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            this, 
-            0, 
-            intent,
-            PendingIntent.FLAG_IMMUTABLE
-        );
-
-        Uri defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        NotificationCompat.Builder notificationBuilder =
-                new NotificationCompat.Builder(this, CHANNEL_ID)
-                        .setSmallIcon(R.drawable.ic_notification)
-                        .setContentTitle(title)
-                        .setContentText(messageBody)
-                        .setAutoCancel(true)
-                        .setSound(defaultSoundUri)
-                        .setPriority(notificationPriority)
-                        .setContentIntent(pendingIntent);
-
-        NotificationManager notificationManager =
-                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-
-        // Since android Oreo notification channel is needed.
+    private void showNotification(String title, String body, String appointmentId, String type) {
+        // Create notification channel for Android O and above
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
             );
-            notificationManager.createNotificationChannel(channel);
+            channel.setDescription("Appointment notifications");
+            
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            manager.createNotificationChannel(channel);
         }
 
-        // Use appointmentId or current time as notification ID
-        int notificationId;
-        if (appointmentId != null) {
-            // Use hashCode of appointmentId to create a consistent ID
-            notificationId = appointmentId.hashCode();
+        // Create intent based on notification type
+        Intent intent;
+        if (type != null && type.contains("APPOINTMENT_REQUEST")) {
+            intent = new Intent(this, ManageAppointmentRequestsActivity.class);
+        } else if (appointmentId != null) {
+            intent = new Intent(this, AppointmentDetailsActivity.class);
+            intent.putExtra("appointmentId", appointmentId);
         } else {
-            // If no appointment ID, use current time
-            notificationId = (int) System.currentTimeMillis();
+            intent = new Intent(this, NotificationsActivity.class);
         }
         
-        notificationManager.notify(notificationId, notificationBuilder.build());
+        // Add notification type if available
+        if (type != null) {
+            intent.putExtra("type", type);
+        }
         
-        // Also update the Firestore database to reflect new notifications
-        // This will be picked up by the UI when the user opens the app
-        storeNotificationInFirestore(title, messageBody, data);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        // Build the notification
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent);
+
+        // Show the notification
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        int notificationId = appointmentId != null ? appointmentId.hashCode() : (int) System.currentTimeMillis();
+        manager.notify(notificationId, builder.build());
+        
+        // Save notification to local storage
+        NotificationUtils.saveNotification(this, title, body, appointmentId, type);
     }
     
     private void storeNotificationInFirestore(String title, String body, Map<String, String> data) {
@@ -255,7 +239,7 @@ public class PMSFirebaseMessagingService extends FirebaseMessagingService {
             return;
         }
         
-        // Create a notification object to store in Firestore
+        // Create notification data
         Map<String, Object> notificationData = new HashMap<>();
         notificationData.put("title", title);
         notificationData.put("message", body);
@@ -263,20 +247,16 @@ public class PMSFirebaseMessagingService extends FirebaseMessagingService {
         notificationData.put("read", false);
         notificationData.put("createdAt", com.google.firebase.Timestamp.now());
         
-        // Add appointment-related data if available
+        // Add appointment ID if available
         String appointmentId = data.get("appointmentId");
         if (appointmentId != null) {
             notificationData.put("appointmentId", appointmentId);
         }
         
-        String appointmentTitle = data.get("appointmentTitle");
-        if (appointmentTitle != null) {
-            notificationData.put("appointmentTitle", appointmentTitle);
-        }
-        
-        String appointmentDate = data.get("startTime");
-        if (appointmentDate != null) {
-            notificationData.put("appointmentDate", appointmentDate);
+        // Add notification type if available
+        String type = data.get("type");
+        if (type != null) {
+            notificationData.put("type", type);
         }
         
         // Store in Firestore

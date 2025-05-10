@@ -209,6 +209,13 @@ public class ManageAppointmentParticipantsActivity extends AppCompatActivity imp
             Map<String, Object> data = document.getData();
             Log.d(TAG, "Appointment data: " + data);
             
+            // Skip rejected appointments
+            String status = appointment.getStatus();
+            if (status != null && "REJECTED".equalsIgnoreCase(status)) {
+                Log.d(TAG, "Skipping REJECTED appointment: " + appointment.getId() + " - " + appointment.getTitle());
+                continue;
+            }
+            
             // Get participants list
             List<String> participants = appointment.getParticipants();
             
@@ -228,9 +235,64 @@ public class ManageAppointmentParticipantsActivity extends AppCompatActivity imp
             if (participants != null && !participants.isEmpty()) {
                 Log.d(TAG, "Found appointment with " + participants.size() + " participants: " + appointment.getTitle());
                 facultyAppointments.add(appointment);
+                
+                // Extract creator name from createdBy field if available
+                String displayTitle = appointment.getTitle();
+                
+                // Try to get the creator name from the appointment data
+                if (data.containsKey("createdBy")) {
+                    String createdBy = (String) data.get("createdBy");
+                    if (createdBy != null && !createdBy.isEmpty() && createdBy.contains("@")) {
+                        // Extract name from email
+                        String creatorName = extractNameFromEmail(createdBy);
+                        
+                        // If we have a creator name, format the title
+                        if (!creatorName.isEmpty()) {
+                            displayTitle = "Meeting with " + creatorName;
+                            Log.d(TAG, "Using creator name for display: " + creatorName);
+                        }
+                    }
+                }
+                
                 // Map appointment ID to title for spinner selection
-                appointmentIdToTitleMap.put(appointment.getId(), appointment.getTitle());
+                appointmentIdToTitleMap.put(appointment.getId(), displayTitle);
             }
+        }
+    }
+    
+    // Helper method to extract name from email
+    private String extractNameFromEmail(String email) {
+        if (email == null || email.isEmpty() || !email.contains("@")) {
+            return "";
+        }
+        
+        try {
+            // Get name part before the @ symbol and domain part
+            String[] emailParts = email.split("@");
+            String emailName = emailParts[0];
+            String domain = emailParts.length > 1 ? emailParts[1] : "";
+            
+            // Replace dots with spaces and capitalize words for the username
+            emailName = emailName.replace(".", " ");
+            String[] nameParts = emailName.split(" ");
+            StringBuilder nameBuilder = new StringBuilder();
+            for (String part : nameParts) {
+                if (!part.isEmpty()) {
+                    nameBuilder.append(part.substring(0, 1).toUpperCase())
+                              .append(part.substring(1))
+                              .append(" ");
+                }
+            }
+            
+            // For the last name, try to extract from domain if it's not a common domain
+            if (domain.contains("jaca") || domain.contains("jaca.com")) {
+                nameBuilder.append("Jaca");
+            }
+            
+            return nameBuilder.toString().trim();
+        } catch (Exception e) {
+            Log.e(TAG, "Error extracting name from email: " + email, e);
+            return "";
         }
     }
     

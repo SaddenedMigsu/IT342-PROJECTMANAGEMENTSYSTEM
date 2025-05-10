@@ -81,66 +81,8 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
         tvDescription.setText(appointment.getDescription() != null ? appointment.getDescription() : "N/A");
         tvStatus.setText("Status: " + (appointment.getStatus() != null ? appointment.getStatus() : "N/A"));
         
-        // Get the student name who created the appointment
-        String studentName = null;
-        
-        // For appointments with "Marck Ramon" in the title, we know they're created by the student
-        if (appointment.getTitle() != null && appointment.getTitle().contains("Marck Ramon")) {
-            // Always set the name to "Miguel Jaca" for Marck Ramon meetings
-            studentName = "Miguel Jaca";
-            Log.d(TAG, "Force setting student name to Miguel Jaca for Marck Ramon appointment");
-        } else {
-            // For other appointments, use normal logic
-            
-            // First try: get from appointment data
-            try {
-                studentName = appointment.getCreatorName();
-                Log.d(TAG, "Using creatorName from appointment: " + studentName);
-            } catch (Exception e) {
-                Log.e(TAG, "Error getting creatorName from appointment", e);
-            }
-            
-            // Second try: get from SharedPreferences if appointment data wasn't found
-            if (studentName == null || studentName.isEmpty()) {
-        try {
-            SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
-            String firstName = prefs.getString("firstName", "");
-            String lastName = prefs.getString("lastName", "");
-            
-            if (!firstName.isEmpty()) {
-                studentName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
-                Log.d(TAG, "Using student name from SharedPreferences: " + studentName);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting student name from preferences", e);
-            }
-        }
-        
-        // Third try: Try reflection to get additional fields
-        if (studentName == null || studentName.isEmpty()) {
-            try {
-                // Check if there's a studentName field
-                java.lang.reflect.Method method = appointment.getClass().getMethod("getStudentName");
-                Object result = method.invoke(appointment);
-                if (result != null && !result.toString().isEmpty()) {
-                    studentName = result.toString();
-                    Log.d(TAG, "Found studentName via reflection: " + studentName);
-                }
-            } catch (Exception e) {
-                // Ignore reflection errors
-                }
-            }
-        }
-        
-        // Set the requester info text
-        if (studentName != null && !studentName.isEmpty()) {
-            tvRequesterInfo.setText("Requested by: " + studentName);
-            Log.d(TAG, "Setting requester name to: " + studentName);
-        } else {
-            // Fallback to a generic student identifier if we can't get the name
-            tvRequesterInfo.setText("Requested by: Miguel Jaca");
-            Log.w(TAG, "Could not determine student name, using default name");
-        }
+        // Get appointment details from Firestore to get the createdBy field
+        fetchAppointmentCreator(appointment);
         
         Timestamp startTime = appointment.getStartTime();
         if (startTime != null) {
@@ -161,6 +103,153 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
         } else {
             btnAccept.setEnabled(true);
             btnReject.setEnabled(true);
+        }
+    }
+
+    private void fetchAppointmentCreator(Appointment appointment) {
+        // Get the appointment ID
+        String appointmentId = appointment.getId();
+        if (appointmentId == null || appointmentId.isEmpty()) {
+            appointmentId = appointment.getAppointmentId();
+        }
+        
+        if (appointmentId == null || appointmentId.isEmpty()) {
+            Log.e(TAG, "Cannot fetch creator - appointment ID is missing");
+            setRequesterName("Student");
+            return;
+        }
+        
+        Log.d(TAG, "Fetching appointment creator from Firestore for ID: " + appointmentId);
+        
+        // Create a final copy of the appointment for use in lambda
+        final Appointment finalAppointment = appointment;
+        final String finalAppointmentId = appointmentId;
+        
+        // Query Firestore for this specific appointment
+        com.google.firebase.firestore.FirebaseFirestore db = com.google.firebase.firestore.FirebaseFirestore.getInstance();
+        db.collection("appointments").document(appointmentId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    // Get the data from Firestore
+                    Map<String, Object> data = documentSnapshot.getData();
+                    if (data != null) {
+                        Log.d(TAG, "Firestore data for appointment " + finalAppointmentId + ": " + data);
+                        
+                        // Extract creator name from createdBy (email)
+                        String creatorName = null;
+                        
+                        // Prioritize createdBy field (email)
+                        if (data.containsKey("createdBy")) {
+                            String createdBy = (String) data.get("createdBy");
+                            Log.d(TAG, "Found createdBy: " + createdBy + " for appointment: " + finalAppointmentId);
+                            
+                            if (createdBy != null && !createdBy.isEmpty()) {
+                                // If it's an email address, extract and format the name
+                                if (createdBy.contains("@")) {
+                                    // Get name part before the @ symbol and domain part
+                                    String[] emailParts = createdBy.split("@");
+                                    String emailName = emailParts[0];
+                                    String domain = emailParts.length > 1 ? emailParts[1] : "";
+                                    
+                                    // Replace dots with spaces and capitalize words for the username
+                                    emailName = emailName.replace(".", " ");
+                                    String[] nameParts = emailName.split(" ");
+                                    StringBuilder nameBuilder = new StringBuilder();
+                                    for (String part : nameParts) {
+                                        if (!part.isEmpty()) {
+                                            nameBuilder.append(part.substring(0, 1).toUpperCase())
+                                                      .append(part.substring(1))
+                                                      .append(" ");
+                                        }
+                                    }
+                                    
+                                    // For the last name, try to extract from domain if it's not a common domain
+                                    if (domain.contains("jaca") || domain.contains("jaca.com")) {
+                                        nameBuilder.append("Jaca");
+                                    }
+                                    
+                                    creatorName = nameBuilder.toString().trim();
+                                    Log.d(TAG, "Extracted name from email: " + creatorName);
+                                } else {
+                                    creatorName = createdBy;
+                                }
+                                
+                                // Set the creator name
+                                setRequesterName(creatorName);
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                // If we get here, we couldn't get the creator name from Firestore
+                // Fall back to the existing logic
+                fallbackToExistingLogic(finalAppointment);
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error fetching appointment from Firestore", e);
+                // Fall back to the existing logic
+                fallbackToExistingLogic(finalAppointment);
+            });
+    }
+    
+    private void fallbackToExistingLogic(Appointment appointment) {
+        // Get the student name who created the appointment
+        String studentName = null;
+        
+        // First try: get from appointment data
+        try {
+            studentName = appointment.getCreatorName();
+            Log.d(TAG, "Using creatorName from appointment: " + studentName);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting creatorName from appointment", e);
+        }
+        
+        // Second try: get from SharedPreferences if appointment data wasn't found
+        if (studentName == null || studentName.isEmpty()) {
+            try {
+                SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+                String firstName = prefs.getString("firstName", "");
+                String lastName = prefs.getString("lastName", "");
+                
+                if (!firstName.isEmpty()) {
+                    studentName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
+                    Log.d(TAG, "Using student name from SharedPreferences: " + studentName);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting student name from preferences", e);
+            }
+        }
+        
+        // Third try: Try reflection to get additional fields
+        if (studentName == null || studentName.isEmpty()) {
+            try {
+                // Check if there's a studentName field
+                java.lang.reflect.Method method = appointment.getClass().getMethod("getStudentName");
+                Object result = method.invoke(appointment);
+                if (result != null && !result.toString().isEmpty()) {
+                    studentName = result.toString();
+                    Log.d(TAG, "Found studentName via reflection: " + studentName);
+                }
+            } catch (Exception e) {
+                // Ignore reflection errors
+            }
+        }
+        
+        // Set the requester name
+        setRequesterName(studentName != null && !studentName.isEmpty() ? studentName : "Student");
+    }
+    
+    private void setRequesterName(String name) {
+        // Set the requester info text
+        if (name != null && !name.isEmpty()) {
+            tvRequesterInfo.setText("Requested by: " + name);
+            Log.d(TAG, "Setting requester name to: " + name);
+        } else {
+            // Fallback to a generic student identifier if we can't get the name
+            tvRequesterInfo.setText("Requested by: Student");
+            Log.w(TAG, "Could not determine student name, using default name");
         }
     }
 
@@ -209,12 +298,22 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
                     // Save the updated appointment back to server to ensure the status is correct
                     updateAppointmentOnServer(updatedAppointment, token);
                     
+                    // Also update the status in Firestore
+                    updateFirestoreAppointmentStatus(appointmentIdToUpdate, newStatus);
+                    
                     Log.i(TAG, "Appointment approval successful. Status updated to: " + newStatus);
                     Toast.makeText(AppointmentRequestDetailsActivity.this, 
                         "Request " + (isApproved ? "accepted" : "rejected") + ".", Toast.LENGTH_SHORT).show();
                     
                     currentAppointment = updatedAppointment; 
                     updateUI(currentAppointment);
+                    
+                    // If appointment was rejected, finish the activity after a short delay
+                    if (newStatus.equals("REJECTED")) {
+                        new android.os.Handler().postDelayed(() -> {
+                            finish();
+                        }, 1500); // 1.5 seconds
+                    }
                 } else {
                     String action = isApproved ? "accept" : "reject";
                     String errorMsg = "Failed to " + action + " request.";
@@ -239,6 +338,22 @@ public class AppointmentRequestDetailsActivity extends AppCompatActivity {
                 Toast.makeText(AppointmentRequestDetailsActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
+    }
+    
+    // Add a method to update the appointment status in Firestore
+    private void updateFirestoreAppointmentStatus(String appointmentId, String newStatus) {
+        com.google.firebase.firestore.FirebaseFirestore db = com.google.firebase.firestore.FirebaseFirestore.getInstance();
+        
+        Log.d(TAG, "Updating Firestore appointment status: " + appointmentId + " to " + newStatus);
+        
+        db.collection("appointments").document(appointmentId)
+            .update("status", newStatus)
+            .addOnSuccessListener(aVoid -> {
+                Log.d(TAG, "Firestore appointment status updated successfully");
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error updating Firestore appointment status", e);
+            });
     }
     
     // Add a method to update the appointment on the server with the new status

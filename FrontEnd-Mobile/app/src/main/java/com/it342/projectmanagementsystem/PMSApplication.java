@@ -17,6 +17,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.services.PMSFirebaseMessagingService;
 import com.it342.projectmanagementsystem.utils.Constants;
+import com.it342.projectmanagementsystem.utils.LocalNotificationService;
+import com.it342.projectmanagementsystem.utils.NotificationUtils;
 
 public class PMSApplication extends Application {
     private static final String TAG = "PMSApplication";
@@ -35,6 +37,11 @@ public class PMSApplication extends Application {
         
         // Get FCM token
         retrieveAndStoreFCMToken();
+        
+        // Schedule local notification checks
+        scheduleLocalNotifications();
+        
+        Log.d(TAG, "PMSApplication initialized");
     }
     
     public static Context getAppContext() {
@@ -59,6 +66,9 @@ public class PMSApplication extends Application {
                 editor.putString(Constants.KEY_FCM_TOKEN, token);
                 editor.apply();
                 
+                // Also save in NotificationUtils for consistency
+                NotificationUtils.saveFCMToken(this, token);
+                
                 // Check if user is logged in, then send token to server
                 String authToken = prefs.getString(Constants.KEY_TOKEN, "");
                 if (!authToken.isEmpty()) {
@@ -66,6 +76,15 @@ public class PMSApplication extends Application {
                     PMSFirebaseMessagingService.sendRegistrationTokenToServer(this, token);
                 }
             });
+    }
+    
+    private void scheduleLocalNotifications() {
+        // Schedule local notification checks
+        LocalNotificationService.scheduleNotificationChecks(this);
+        
+        // Create a test notification to verify the system is working
+        // This is just for debugging, can be removed in production
+        LocalNotificationService.createTestNotification(this);
     }
     
     /**
@@ -79,12 +98,17 @@ public class PMSApplication extends Application {
                     Manifest.permission.POST_NOTIFICATIONS) != 
                     PackageManager.PERMISSION_GRANTED) {
                 
+                Log.d(TAG, "Requesting notification permission for Android 13+");
                 // Request permission
                 ActivityCompat.requestPermissions(
                     activity,
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     100);
+            } else {
+                Log.d(TAG, "Notification permission already granted");
             }
+        } else {
+            Log.d(TAG, "Notification permission not needed for this Android version");
         }
     }
 } 

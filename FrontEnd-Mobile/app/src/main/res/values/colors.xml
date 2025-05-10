@@ -8,6 +8,8 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="primary">#800000</color>
+    <color name="primary_dark">#600000</color>
+    <color name="accent">#800000</color>
     <color name="secondary">#F5BD02</color>
     <color name="background">#FFFFFF</color>
     <color name="text_dark">#212121</color>
@@ -15,6 +17,12 @@
     <color name="maroon">#800000</color>
     <color name="gray">#757575</color>
     <color name="colorAccent">#800000</color>
+    <color name="colorPrimary">#800000</color>
+    
+    <!-- Notification colors -->
+    <color name="notification_badge_bg">#F44336</color>
+    <color name="notification_badge_text">#FFFFFF</color>
+    <color name="notification_unread_bg">#FFEBEE</color>
     
     <!-- Appointment status colors -->
     <color name="appointment_scheduled_bg">#E3F2FD</color>
@@ -31,4 +39,12 @@
     <!-- Keep for backward compatibility -->
     <color name="appointment_accepted_bg">@color/appointment_scheduled_bg</color>
     <color name="appointment_accepted_text">@color/appointment_scheduled_text</color>
+    
+    <!-- Explicitly redefine notification badge colors to ensure they're available -->
+    <color name="notification_badge_bg_direct">#F44336</color>
+    <color name="notification_badge_text_direct">#FFFFFF</color>
+    
+    <!-- New colors -->
+    <color name="error">#D32F2F</color>
+    <color name="success">#388E3C</color>
 </resources>
