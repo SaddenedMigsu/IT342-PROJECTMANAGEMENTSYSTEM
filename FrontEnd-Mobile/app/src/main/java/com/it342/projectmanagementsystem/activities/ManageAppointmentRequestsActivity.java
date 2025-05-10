@@ -12,6 +12,11 @@ import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.models.Appointment;
 import android.content.SharedPreferences;
 import android.util.Log;
+import android.view.View;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +38,10 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
     private AppointmentRequestAdapter adapter;
     private List<Appointment> appointmentRequestList;
     private ApiService apiService;
+    private ImageButton btnBack;
+    private ChipGroup chipGroup;
+    private LinearLayout emptyStateView;
+    private String currentFilter = "All";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +50,10 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
 
         // Initialize views
         rvAppointmentRequests = findViewById(R.id.rvAppointmentRequests);
+        btnBack = findViewById(R.id.btnBack);
+        chipGroup = findViewById(R.id.chipGroup);
+        emptyStateView = findViewById(R.id.emptyStateView);
+        
         rvAppointmentRequests.setLayoutManager(new LinearLayoutManager(this));
 
         // Initialize list and adapter
@@ -50,6 +63,12 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
 
         // Initialize API service
         apiService = RetrofitClient.getInstance().getApiService();
+
+        // Set up back button
+        btnBack.setOnClickListener(v -> onBackPressed());
+
+        // Set up filter chips
+        setupFilterChips();
 
         // Load appointment requests
         loadAppointmentRequests();
@@ -97,20 +116,23 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
                     for (Appointment appointment : facultyAppointments) {
                         String id = appointment.getId();
                         if (id != null && !id.isEmpty()) {
-                            appointmentMap.put(id, appointment);
+                            // For each API appointment, fetch additional details from Firestore
+                            fetchAppointmentDetailsFromFirestore(id, appointment, appointmentMap);
+                            
                             // Log appointment details
                             Log.d(TAG, "API Appointment: ID=" + id + ", Title=" + appointment.getTitle() + 
                                   ", Status=" + appointment.getStatus());
-                            
-                            // Specifically look for the Marck Ramon appointment
-                            if (appointment.getTitle() != null && appointment.getTitle().contains("Marck Ramon")) {
-                                Log.d(TAG, "Found Marck Ramon appointment in API response: " + id);
-                            }
                         }
                     }
                     
                     // Now also fetch from Firestore to get newest appointments
-                    fetchAppointmentsFromFirestore(facultyUserId, facultyEmail, appointmentMap);
+                    // We'll only call this once to avoid clearing the appointments
+                    if (!facultyAppointments.isEmpty()) {
+                        fetchAppointmentsFromFirestore(facultyUserId, facultyEmail, appointmentMap);
+                    } else {
+                        // If no appointments from API, check Firestore anyway
+                        fetchAppointmentsFromFirestore(facultyUserId, facultyEmail, appointmentMap);
+                    }
                 } else {
                     String errorMsg = "Failed to load appointment requests from API.";
                     try {
@@ -139,16 +161,102 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
         });
     }
     
+    // New method to fetch appointment details from Firestore for appointments from API
+    private void fetchAppointmentDetailsFromFirestore(String appointmentId, Appointment appointment, Map<String, Appointment> appointmentMap) {
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        
+        // Fetch the specific appointment document to get full details
+        db.collection("appointments").document(appointmentId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    Log.d(TAG, "Found Firestore details for API appointment: " + appointmentId);
+                    
+                    // Get the data from Firestore
+                    Map<String, Object> data = documentSnapshot.getData();
+                    if (data != null) {
+                        Log.d(TAG, "Firestore data for appointment " + appointmentId + ": " + data);
+                        
+                        // Extract creator name from createdBy (email)
+                        String creatorName = null;
+                        
+                        // Prioritize createdBy field (email)
+                        if (data.containsKey("createdBy")) {
+                            String createdBy = (String) data.get("createdBy");
+                            Log.d(TAG, "Found createdBy: " + createdBy + " for appointment: " + appointmentId);
+                            
+                            if (createdBy != null && !createdBy.isEmpty()) {
+                                // If it's an email address, extract and format the name
+                                if (createdBy.contains("@")) {
+                                    // Get name part before the @ symbol and domain part
+                                    String[] emailParts = createdBy.split("@");
+                                    String emailName = emailParts[0];
+                                    String domain = emailParts.length > 1 ? emailParts[1] : "";
+                                    
+                                    // Replace dots with spaces and capitalize words for the username
+                                    emailName = emailName.replace(".", " ");
+                                    String[] nameParts = emailName.split(" ");
+                                    StringBuilder nameBuilder = new StringBuilder();
+                                    for (String part : nameParts) {
+                                        if (!part.isEmpty()) {
+                                            nameBuilder.append(part.substring(0, 1).toUpperCase())
+                                                      .append(part.substring(1))
+                                                      .append(" ");
+                                        }
+                                    }
+                                    
+                                    // For the last name, try to extract from domain if it's not a common domain
+                                    if (domain.contains("jaca") || domain.contains("jaca.com")) {
+                                        nameBuilder.append("Jaca");
+                                    }
+                                    
+                                    creatorName = nameBuilder.toString().trim();
+                                    Log.d(TAG, "Extracted name from email: " + creatorName);
+                                } else {
+                                    creatorName = createdBy;
+                                }
+                            }
+                        }
+                        
+                        // Set creatorName if found
+                        if (creatorName != null && !creatorName.isEmpty()) {
+                            appointment.setCreatorName(creatorName);
+                            Log.d(TAG, "Set creator name to: " + creatorName + " for API appointment: " + appointmentId);
+                        } else {
+                            // Default to "Student" if we couldn't find a name
+                            appointment.setCreatorName("Student");
+                            Log.d(TAG, "Set default creator name for API appointment: " + appointmentId);
+                        }
+                        
+                        // Update the appointment in the map
+                        appointmentMap.put(appointmentId, appointment);
+                        
+                        // Update the UI immediately after processing this appointment
+                        updateUIWithCurrentAppointments(appointmentMap.values());
+                    }
+                } else {
+                    Log.d(TAG, "No Firestore document found for API appointment: " + appointmentId);
+                    // Still add the appointment to the map even if no Firestore details
+                    appointmentMap.put(appointmentId, appointment);
+                }
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error fetching Firestore details for API appointment: " + appointmentId, e);
+                // Still add the appointment to the map even if Firestore fetch fails
+                appointmentMap.put(appointmentId, appointment);
+            });
+    }
+    
     private void fetchAppointmentsFromFirestore(String facultyUserId, String facultyEmail, Map<String, Appointment> existingAppointments) {
         FirebaseFirestore db = FirebaseFirestore.getInstance();
         
         // Add log to indicate we're attempting to fetch from Firestore
         Log.d(TAG, "Querying Firestore for appointments with facultyId=" + facultyUserId);
         
-        // Expand our queries to make sure we get all appointments
+        // Only query appointments assigned to this faculty
         Query baseQuery = db.collection("appointments");
         
-        // First query: Get appointments assigned to this faculty
+        // First query: Get appointments assigned to this faculty only
         baseQuery.whereEqualTo("facultyId", facultyUserId)
             .get()
             .addOnSuccessListener(queryDocumentSnapshots -> {
@@ -171,55 +279,55 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
                             appointment.setId(appointmentId);
                             appointment.setAppointmentId(appointmentId);
                             
-                            // Fix missing creator name by checking all possible field names
-                            if (appointment.getCreatorName() == null || appointment.getCreatorName().isEmpty()) {
-                                // Try to get creatorName from different potential field names
-                                String creatorName = null;
+                            // Extract creator name from createdBy (email)
+                            String creatorName = null;
+                            
+                            // Prioritize createdBy field (email)
+                            if (data.containsKey("createdBy")) {
+                                String createdBy = (String) data.get("createdBy");
+                                Log.d(TAG, "Found createdBy: " + createdBy + " for appointment: " + appointmentId);
                                 
-                                if (data.containsKey("creatorName")) {
-                                    creatorName = (String) data.get("creatorName");
-                                } else if (data.containsKey("studentName")) {
-                                    creatorName = (String) data.get("studentName");
-                                } else if (data.containsKey("createdBy")) {
-                                    creatorName = (String) data.get("createdBy");
-                                    
-                                    // If createdBy is an email address, try to extract user name
-                                    if (creatorName != null && creatorName.contains("@")) {
-                                        // Get name part before the @ symbol
-                                        creatorName = creatorName.split("@")[0];
-                                        // Replace dots with spaces and capitalize words
-                                        creatorName = creatorName.replace(".", " ");
-                                        String[] parts = creatorName.split(" ");
+                                if (createdBy != null && !createdBy.isEmpty()) {
+                                    // If it's an email address, extract and format the name
+                                    if (createdBy.contains("@")) {
+                                        // Get name part before the @ symbol and domain part
+                                        String[] emailParts = createdBy.split("@");
+                                        String emailName = emailParts[0];
+                                        String domain = emailParts.length > 1 ? emailParts[1] : "";
+                                        
+                                        // Replace dots with spaces and capitalize words for the username
+                                        emailName = emailName.replace(".", " ");
+                                        String[] nameParts = emailName.split(" ");
                                         StringBuilder nameBuilder = new StringBuilder();
-                                        for (String part : parts) {
+                                        for (String part : nameParts) {
                                             if (!part.isEmpty()) {
                                                 nameBuilder.append(part.substring(0, 1).toUpperCase())
                                                           .append(part.substring(1))
                                                           .append(" ");
                                             }
                                         }
+                                        
+                                        // For the last name, try to extract from domain if it's not a common domain
+                                        if (domain.contains("jaca") || domain.contains("jaca.com")) {
+                                            nameBuilder.append("Jaca");
+                                        }
+                                        
                                         creatorName = nameBuilder.toString().trim();
-                                    }
-                                } else if (data.containsKey("studentId")) {
-                                    // Try to get user information from SharedPreferences
-                                    SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
-                                    String firstName = prefs.getString("firstName", "");
-                                    String lastName = prefs.getString("lastName", "");
-                                    
-                                    if (!firstName.isEmpty()) {
-                                        creatorName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
+                                        Log.d(TAG, "Extracted name from email: " + creatorName);
+                                    } else {
+                                        creatorName = createdBy;
                                     }
                                 }
-                                
-                                // Set creatorName if found
-                                if (creatorName != null && !creatorName.isEmpty()) {
-                                    appointment.setCreatorName(creatorName);
-                                    Log.d(TAG, "Set creator name to: " + creatorName + " for appointment: " + appointmentId);
-                                } else {
-                                    // Default to "Miguel Jaca" if we couldn't find a name
-                                    appointment.setCreatorName("Miguel Jaca");
-                                    Log.d(TAG, "Set default creator name for appointment: " + appointmentId);
-                                }
+                            }
+                            
+                            // Set creatorName if found
+                            if (creatorName != null && !creatorName.isEmpty()) {
+                                appointment.setCreatorName(creatorName);
+                                Log.d(TAG, "Set creator name to: " + creatorName + " for appointment: " + appointmentId);
+                            } else {
+                                // Default to "Student" if we couldn't find a name
+                                appointment.setCreatorName("Student");
+                                Log.d(TAG, "Set default creator name for appointment: " + appointmentId);
                             }
                             
                             existingAppointments.put(appointmentId, appointment);
@@ -231,266 +339,8 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
                     }
                 }
                 
-                // Second query: Try a direct query to get LBSckxyLKBH1yd5vqgp8 appointment (from screenshot)
-                String specificId = "LBSckxyLKBH1yd5vqgp8";
-                db.collection("appointments")
-                    .document(specificId)
-                    .get()
-                    .addOnSuccessListener(documentSnapshot -> {
-                        if (documentSnapshot.exists()) {
-                            Log.d(TAG, "Found specific appointment with ID: " + specificId);
-                            
-                            if (!existingAppointments.containsKey(specificId)) {
-                                try {
-                                    // Log all fields in the document for debugging
-                                    Map<String, Object> data = documentSnapshot.getData();
-                                    Log.d(TAG, "Specific document data: " + data);
-                                    
-                                    Appointment appointment = documentSnapshot.toObject(Appointment.class);
-                                    appointment.setId(specificId);
-                                    appointment.setAppointmentId(specificId);
-                                    
-                                    // Fix missing creator name by checking all possible field names
-                                    if (appointment.getCreatorName() == null || appointment.getCreatorName().isEmpty()) {
-                                        // Try to get creatorName from different potential field names
-                                        String creatorName = null;
-                                        
-                                        if (data.containsKey("creatorName")) {
-                                            creatorName = (String) data.get("creatorName");
-                                        } else if (data.containsKey("studentName")) {
-                                            creatorName = (String) data.get("studentName");
-                                        } else if (data.containsKey("createdBy")) {
-                                            creatorName = (String) data.get("createdBy");
-                                            
-                                            // If createdBy is an email address, try to extract user name
-                                            if (creatorName != null && creatorName.contains("@")) {
-                                                // Get name part before the @ symbol
-                                                creatorName = creatorName.split("@")[0];
-                                                // Replace dots with spaces and capitalize words
-                                                creatorName = creatorName.replace(".", " ");
-                                                String[] parts = creatorName.split(" ");
-                                                StringBuilder nameBuilder = new StringBuilder();
-                                                for (String part : parts) {
-                                                    if (!part.isEmpty()) {
-                                                        nameBuilder.append(part.substring(0, 1).toUpperCase())
-                                                                  .append(part.substring(1))
-                                                                  .append(" ");
-                                                    }
-                                                }
-                                                creatorName = nameBuilder.toString().trim();
-                                            }
-                                        } else if (data.containsKey("studentId")) {
-                                            // Try to get user information from SharedPreferences
-                                            SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
-                                            String firstName = prefs.getString("firstName", "");
-                                            String lastName = prefs.getString("lastName", "");
-                                            
-                                            if (!firstName.isEmpty()) {
-                                                creatorName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
-                                            }
-                                        }
-                                        
-                                        // Set creatorName if found
-                                        if (creatorName != null && !creatorName.isEmpty()) {
-                                            appointment.setCreatorName(creatorName);
-                                            Log.d(TAG, "Set creator name to: " + creatorName + " for specific appointment");
-                                        } else {
-                                            // Default to "Miguel Jaca" if we couldn't find a name
-                                            appointment.setCreatorName("Miguel Jaca");
-                                            Log.d(TAG, "Set default creator name for specific appointment");
-                                        }
-                                    }
-                                    
-                                    existingAppointments.put(specificId, appointment);
-                                    Log.d(TAG, "Added specific appointment from direct lookup: " + specificId + 
-                                          ", Creator: " + appointment.getCreatorName());
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Error converting specific appointment", e);
-                                }
-                            }
-                        } else {
-                            Log.d(TAG, "Specific appointment with ID " + specificId + " not found");
-                        }
-                        
-                        // Third query: Also try by title containing "Marck Ramon"
-                        db.collection("appointments")
-                            .whereGreaterThanOrEqualTo("title", "Meeting with Marck Ramon")
-                            .whereLessThanOrEqualTo("title", "Meeting with Marck Ramon" + "\uf8ff")
-                            .get()
-                            .addOnSuccessListener(titleResults -> {
-                                Log.d(TAG, "Found " + titleResults.size() + " appointments by title");
-                                
-                                for (com.google.firebase.firestore.QueryDocumentSnapshot document : titleResults) {
-                                    String appointmentId = document.getId();
-                                    if (!existingAppointments.containsKey(appointmentId)) {
-                                        try {
-                                            // Log all fields in the document for debugging
-                                            Map<String, Object> data = document.getData();
-                                            Log.d(TAG, "Title search document data: " + data);
-                                            
-                                            Appointment appointment = document.toObject(Appointment.class);
-                                            appointment.setId(appointmentId);
-                                            appointment.setAppointmentId(appointmentId);
-                                            
-                                            // Fix missing creator name by checking all possible field names
-                                            if (appointment.getCreatorName() == null || appointment.getCreatorName().isEmpty()) {
-                                                // Try to get creatorName from different potential field names
-                                                String creatorName = null;
-                                                
-                                                if (data.containsKey("creatorName")) {
-                                                    creatorName = (String) data.get("creatorName");
-                                                } else if (data.containsKey("studentName")) {
-                                                    creatorName = (String) data.get("studentName");
-                                                } else if (data.containsKey("createdBy")) {
-                                                    creatorName = (String) data.get("createdBy");
-                                                    
-                                                    // If createdBy is an email address, try to extract user name
-                                                    if (creatorName != null && creatorName.contains("@")) {
-                                                        // Get name part before the @ symbol
-                                                        creatorName = creatorName.split("@")[0];
-                                                        // Replace dots with spaces and capitalize words
-                                                        creatorName = creatorName.replace(".", " ");
-                                                        String[] parts = creatorName.split(" ");
-                                                        StringBuilder nameBuilder = new StringBuilder();
-                                                        for (String part : parts) {
-                                                            if (!part.isEmpty()) {
-                                                                nameBuilder.append(part.substring(0, 1).toUpperCase())
-                                                                          .append(part.substring(1))
-                                                                          .append(" ");
-                                                            }
-                                                        }
-                                                        creatorName = nameBuilder.toString().trim();
-                                                    }
-                                                } else if (data.containsKey("studentId")) {
-                                                    // Try to get user information from SharedPreferences
-                                                    SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
-                                                    String firstName = prefs.getString("firstName", "");
-                                                    String lastName = prefs.getString("lastName", "");
-                                                    
-                                                    if (!firstName.isEmpty()) {
-                                                        creatorName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
-                                                    }
-                                                }
-                                                
-                                                // Set creatorName if found
-                                                if (creatorName != null && !creatorName.isEmpty()) {
-                                                    appointment.setCreatorName(creatorName);
-                                                    Log.d(TAG, "Set creator name to: " + creatorName + " for title search appointment: " + appointmentId);
-                                                } else {
-                                                    // Default to "Miguel Jaca" if we couldn't find a name
-                                                    appointment.setCreatorName("Miguel Jaca");
-                                                    Log.d(TAG, "Set default creator name for title search appointment: " + appointmentId);
-                                                }
-                                            }
-                                            
-                                            existingAppointments.put(appointmentId, appointment);
-                                            Log.d(TAG, "Added appointment by title: " + appointmentId + " - " + appointment.getTitle() + 
-                                                  ", Creator: " + appointment.getCreatorName());
-                                        } catch (Exception e) {
-                                            Log.e(TAG, "Error converting appointment by title", e);
-                                        }
-                                    }
-                                }
-                                
-                                // Finally, display the appointments
-                                filterAndDisplayAppointments(existingAppointments.values());
-                            })
-                            .addOnFailureListener(e -> {
-                                Log.e(TAG, "Error finding appointments by title", e);
-                                filterAndDisplayAppointments(existingAppointments.values());
-                            });
-                    })
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Error finding specific appointment", e);
-                        
-                        // Continue with title query
-                        db.collection("appointments")
-                            .whereGreaterThanOrEqualTo("title", "Meeting with Marck Ramon")
-                            .whereLessThanOrEqualTo("title", "Meeting with Marck Ramon" + "\uf8ff")
-                            .get()
-                            .addOnSuccessListener(titleResults -> {
-                                Log.d(TAG, "Found " + titleResults.size() + " appointments by title");
-                                
-                                for (com.google.firebase.firestore.QueryDocumentSnapshot document : titleResults) {
-                                    String appointmentId = document.getId();
-                                    if (!existingAppointments.containsKey(appointmentId)) {
-                                        try {
-                                            // Log all fields in the document for debugging
-                                            Map<String, Object> data = document.getData();
-                                            Log.d(TAG, "Title search document data: " + data);
-                                            
-                                            Appointment appointment = document.toObject(Appointment.class);
-                                            appointment.setId(appointmentId);
-                                            appointment.setAppointmentId(appointmentId);
-                                            
-                                            // Fix missing creator name by checking all possible field names
-                                            if (appointment.getCreatorName() == null || appointment.getCreatorName().isEmpty()) {
-                                                // Try to get creatorName from different potential field names
-                                                String creatorName = null;
-                                                
-                                                if (data.containsKey("creatorName")) {
-                                                    creatorName = (String) data.get("creatorName");
-                                                } else if (data.containsKey("studentName")) {
-                                                    creatorName = (String) data.get("studentName");
-                                                } else if (data.containsKey("createdBy")) {
-                                                    creatorName = (String) data.get("createdBy");
-                                                    
-                                                    // If createdBy is an email address, try to extract user name
-                                                    if (creatorName != null && creatorName.contains("@")) {
-                                                        // Get name part before the @ symbol
-                                                        creatorName = creatorName.split("@")[0];
-                                                        // Replace dots with spaces and capitalize words
-                                                        creatorName = creatorName.replace(".", " ");
-                                                        String[] parts = creatorName.split(" ");
-                                                        StringBuilder nameBuilder = new StringBuilder();
-                                                        for (String part : parts) {
-                                                            if (!part.isEmpty()) {
-                                                                nameBuilder.append(part.substring(0, 1).toUpperCase())
-                                                                          .append(part.substring(1))
-                                                                          .append(" ");
-                                                            }
-                                                        }
-                                                        creatorName = nameBuilder.toString().trim();
-                                                    }
-                                                } else if (data.containsKey("studentId")) {
-                                                    // Try to get user information from SharedPreferences
-                                                    SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
-                                                    String firstName = prefs.getString("firstName", "");
-                                                    String lastName = prefs.getString("lastName", "");
-                                                    
-                                                    if (!firstName.isEmpty()) {
-                                                        creatorName = firstName + (lastName.isEmpty() ? "" : " " + lastName);
-                                                    }
-                                                }
-                                                
-                                                // Set creatorName if found
-                                                if (creatorName != null && !creatorName.isEmpty()) {
-                                                    appointment.setCreatorName(creatorName);
-                                                    Log.d(TAG, "Set creator name to: " + creatorName + " for title search appointment: " + appointmentId);
-                                                } else {
-                                                    // Default to "Miguel Jaca" if we couldn't find a name
-                                                    appointment.setCreatorName("Miguel Jaca");
-                                                    Log.d(TAG, "Set default creator name for title search appointment: " + appointmentId);
-                                                }
-                                            }
-                                            
-                                            existingAppointments.put(appointmentId, appointment);
-                                            Log.d(TAG, "Added appointment by title: " + appointmentId + " - " + appointment.getTitle() + 
-                                                  ", Creator: " + appointment.getCreatorName());
-                                        } catch (Exception e2) {
-                                            Log.e(TAG, "Error converting appointment by title", e2);
-                                        }
-                                    }
-                                }
-                                
-                                // Finally, display the appointments
-                                filterAndDisplayAppointments(existingAppointments.values());
-                            })
-                            .addOnFailureListener(e2 -> {
-                                Log.e(TAG, "Error finding appointments by title", e2);
-                                filterAndDisplayAppointments(existingAppointments.values());
-                            });
-                    });
+                // Display the appointments - no longer looking for specific appointments
+                filterAndDisplayAppointments(existingAppointments.values());
             })
             .addOnFailureListener(e -> {
                 Log.e(TAG, "Error fetching appointments from Firestore", e);
@@ -498,113 +348,60 @@ public class ManageAppointmentRequestsActivity extends AppCompatActivity {
             });
     }
     
+    private void updateUIWithCurrentAppointments(Collection<Appointment> appointments) {
+        // Clear and update the main list
+        appointmentRequestList.clear();
+        appointmentRequestList.addAll(appointments);
+        // Apply current filter
+        filterAndDisplayAppointments(appointmentRequestList);
+    }
+
     private void filterAndDisplayAppointments(Collection<Appointment> allAppointments) {
-        // Get current time for filtering
-        long currentTimeMillis = System.currentTimeMillis();
-        
-        // Log total appointments before filtering
-        Log.d(TAG, "Total appointments before filtering: " + allAppointments.size());
-        
-        // Filter for relevant appointments
-        List<Appointment> filteredAppointments = new ArrayList<>();
-        
-        // Show both PENDING_APPROVAL and SCHEDULED appointments in the future
+        List<Appointment> filteredList = new ArrayList<>();
         
         for (Appointment appointment : allAppointments) {
-            String title = appointment.getTitle();
             String status = appointment.getStatus();
-            String id = appointment.getId();
-            
-            // Skip null status
             if (status == null) {
-                status = "PENDING_APPROVAL";
+                status = "PENDING_APPROVAL"; // Default status if null
                 appointment.setStatus(status);
             }
-            
-            // Check if this is the specific May 23, 2025 appointment
-            boolean isMay23MarckRamon = false;
-            if (title != null && title.contains("Marck Ramon") && appointment.getStartTime() != null) {
-                try {
-                    Date startDate = appointment.getStartTime().toDate();
-                    Calendar cal = Calendar.getInstance();
-                    cal.setTime(startDate);
-                    
-                    // Check if it's May 23, 2025
-                    if (cal.get(Calendar.YEAR) == 2025 && 
-                        cal.get(Calendar.MONTH) == Calendar.MAY && 
-                        cal.get(Calendar.DAY_OF_MONTH) == 23) {
-                        isMay23MarckRamon = true;
-                        Log.d(TAG, "Found May 23 Marck Ramon appointment: " + id);
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error checking date for appointment: " + id, e);
-                }
-            }
-            
-            // Always include the May 23 Marck Ramon appointment
-            if (isMay23MarckRamon) {
-                // Ensure it shows as PENDING_APPROVAL
-                appointment.setStatus("PENDING_APPROVAL");
-                filteredAppointments.add(appointment);
-                Log.d(TAG, "Keeping May 23 Marck Ramon appointment");
-                continue; // Skip further checks
-            }
-            
-            // For all other appointments, check date and status
-            boolean isRelevantStatus = "PENDING_APPROVAL".equalsIgnoreCase(status) || 
-                                      "SCHEDULED".equalsIgnoreCase(status) || 
-                                      "ACCEPTED".equalsIgnoreCase(status);
-            boolean isFuture = true; // Default to true unless we can determine time
-            
-            // Check if appointment is in the future
-            if (appointment.getStartTime() != null) {
-                long appointmentTimeMillis = appointment.getStartTime().toDate().getTime();
-                isFuture = appointmentTimeMillis > currentTimeMillis;
-                
-                // Log decision for debugging
-                String timeInfo = new Date(appointmentTimeMillis).toString();
-                Log.d(TAG, "Appointment: " + title + ", Status: " + status + 
-                      ", Time: " + timeInfo + ", Is Future: " + isFuture);
-            }
-            
-            // Include both pending and scheduled appointments that are in the future
-            if (isRelevantStatus && isFuture) {
-                filteredAppointments.add(appointment);
-                Log.d(TAG, "Keeping future appointment: " + title + ", Status: " + status);
-            } else {
-                Log.d(TAG, "Filtered out appointment: " + title + ", Status: " + status + 
-                      ", Is Future: " + isFuture);
+
+            if (currentFilter.equals("All") || 
+                (currentFilter.equals("Pending") && (status.equals("PENDING_APPROVAL") || status.equals("Pending"))) ||
+                (currentFilter.equals("Approved") && (status.equals("ACCEPTED") || status.equals("SCHEDULED") || status.equals("Approved"))) ||
+                (currentFilter.equals("Rejected") && (status.equals("REJECTED") || status.equals("Rejected")))) {
+                filteredList.add(appointment);
             }
         }
 
-        Log.d(TAG, "Found " + filteredAppointments.size() + " filtered appointments to display");
+        // Update the adapter with filtered list without clearing the main list
+        adapter = new AppointmentRequestAdapter(this, filteredList);
+        rvAppointmentRequests.setAdapter(adapter);
 
-        // Log all appointments we're going to display
-        for (Appointment appt : filteredAppointments) {
-            Log.d(TAG, "Final list contains: " + appt.getTitle() + ", Status: " + appt.getStatus());
+        // Show/hide empty state
+        if (filteredList.isEmpty()) {
+            emptyStateView.setVisibility(View.VISIBLE);
+            rvAppointmentRequests.setVisibility(View.GONE);
+        } else {
+            emptyStateView.setVisibility(View.GONE);
+            rvAppointmentRequests.setVisibility(View.VISIBLE);
         }
+    }
 
-        // Sort appointments by date (soonest first)
-        filteredAppointments.sort((a1, a2) -> {
-            try {
-                long time1 = getAppointmentTimeMillis(a1);
-                long time2 = getAppointmentTimeMillis(a2);
-                return Long.compare(time1, time2);
-            } catch (Exception e) {
-                Log.e(TAG, "Error comparing appointment times", e);
-                return 0;
+    private void setupFilterChips() {
+        chipGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == R.id.chipAll) {
+                currentFilter = "All";
+            } else if (checkedId == R.id.chipPending) {
+                currentFilter = "Pending";
+            } else if (checkedId == R.id.chipApproved) {
+                currentFilter = "Approved";
+            } else if (checkedId == R.id.chipRejected) {
+                currentFilter = "Rejected";
             }
+            // Filter from the main list instead of the filtered list
+            filterAndDisplayAppointments(appointmentRequestList);
         });
-
-        // Update the UI
-        appointmentRequestList.clear();
-        appointmentRequestList.addAll(filteredAppointments);
-        adapter.notifyDataSetChanged();
-
-        if (filteredAppointments.isEmpty()) {
-            Toast.makeText(ManageAppointmentRequestsActivity.this, 
-                "No pending appointment requests found.", Toast.LENGTH_SHORT).show();
-        }
     }
     
     // Helper method to get appointment time in milliseconds for sorting

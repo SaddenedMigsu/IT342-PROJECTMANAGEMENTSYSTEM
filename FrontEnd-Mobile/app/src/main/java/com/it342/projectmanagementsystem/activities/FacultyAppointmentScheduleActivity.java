@@ -240,6 +240,14 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
                             appointment.setId(document.getId());
                         }
                         
+                        // Skip rejected appointments
+                        String status = appointment.getStatus();
+                        if (status != null && "REJECTED".equalsIgnoreCase(status)) {
+                            Log.d(TAG, "Skipping REJECTED appointment from Firestore: " + appointment.getTitle() + 
+                                  " (ID: " + appointment.getId() + ")");
+                            continue;
+                        }
+                        
                         // Don't process tags here - we'll do it in a separate step
                         appointments.add(appointment);
                     }
@@ -484,6 +492,14 @@ public class FacultyAppointmentScheduleActivity extends AppCompatActivity implem
         Log.d(TAG, "Processing " + appointments.size() + " appointments");
         
         for (Appointment appointment : appointments) {
+            // Skip rejected appointments
+            String status = appointment.getStatus();
+            if (status != null && "REJECTED".equalsIgnoreCase(status)) {
+                Log.d(TAG, "Skipping REJECTED appointment: " + appointment.getTitle() + 
+                      " (ID: " + appointment.getAppointmentId() + ")");
+                continue;
+            }
+            
             Timestamp startTimestamp = appointment.getStartTime();
             if (startTimestamp != null) {
                 Date startDate = startTimestamp.toDate();

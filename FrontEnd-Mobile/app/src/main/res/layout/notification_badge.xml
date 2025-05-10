@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="20dp"
+    android:layout_height="20dp"
+    android:background="@drawable/notification_badge_background"
+    android:gravity="center"
+    android:textColor="#FFFFFF"
+    android:textSize="12sp"
+    android:textStyle="bold"
+    android:layout_marginStart="-12dp"
+    android:layout_marginTop="-10dp"
+    android:minWidth="20dp"
+    android:minHeight="20dp"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp" /> 

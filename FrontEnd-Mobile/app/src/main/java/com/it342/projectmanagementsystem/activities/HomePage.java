@@ -387,6 +387,24 @@ public class HomePage extends AppCompatActivity {
         for (Appointment appointment : appointments) {
             String title = getAppointmentTitle(appointment);
             
+            // Get appointment status
+            String status = "unknown";
+            try {
+                status = appointment.getStatus();
+            } catch (Exception ex) {
+                try {
+                    status = (String) appointment.getClass().getMethod("getStatusValue").invoke(appointment);
+                } catch (Exception ex2) {
+                    Log.e(TAG, "Could not determine appointment status", ex2);
+                }
+            }
+            
+            // Skip rejected appointments
+            if (status != null && status.toUpperCase().equals("REJECTED")) {
+                Log.d(TAG, "Filtering out rejected appointment: " + title);
+                continue;
+            }
+            
             Object startTimeObj = null;
             try {
                 try {
@@ -407,45 +425,17 @@ public class HomePage extends AppCompatActivity {
                     // 1. Are in the future (start time > current time)
                     // 2. Started in the last 24 hours (to show appointments that just started or are about to end)
                     // 3. Have a valid status
-                    String status = "unknown";
-                    try {
-                        status = appointment.getStatus();
-                    } catch (Exception ex) {
-                        try {
-                            status = (String) appointment.getClass().getMethod("getStatusValue").invoke(appointment);
-                        } catch (Exception ex2) {
-                            Log.e(TAG, "Could not determine appointment status", ex2);
-                        }
-                    }
                     
-                    // Don't show rejected appointments
-                    if (status == null || !status.toUpperCase().equals("REJECTED")) {
-                        // Always include appointments with valid status
-                        upcomingAppointments.add(appointment);
-                        Log.d(TAG, "Keeping appointment: " + title + 
-                              " - Status: " + status + ", Start time: " + startTimeTs.toDate());
-                    } else {
-                        Log.d(TAG, "Filtering out rejected appointment: " + title);
-                    }
+                    // Always include appointments with valid status that are not rejected
+                    upcomingAppointments.add(appointment);
+                    Log.d(TAG, "Keeping appointment: " + title + 
+                          " - Status: " + status + ", Start time: " + startTimeTs.toDate());
                 } else {
                     // For appointments with no time, check status
-                    String status = "unknown";
-                    try {
-                        status = appointment.getStatus();
-                    } catch (Exception ex) {
-                        try {
-                            status = (String) appointment.getClass().getMethod("getStatusValue").invoke(appointment);
-                        } catch (Exception ex2) {
-                            Log.e(TAG, "Could not determine appointment status", ex2);
-                        }
-                    }
-                    
                     // Include non-rejected appointments with unknown time
-                    if (status == null || !status.toUpperCase().equals("REJECTED")) {
-                        upcomingAppointments.add(appointment);
-                        Log.d(TAG, "Keeping appointment with unknown time: " + title +
-                              " - Status: " + status);
-                    }
+                    upcomingAppointments.add(appointment);
+                    Log.d(TAG, "Keeping appointment with unknown time: " + title +
+                          " - Status: " + status);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error checking appointment time", e);

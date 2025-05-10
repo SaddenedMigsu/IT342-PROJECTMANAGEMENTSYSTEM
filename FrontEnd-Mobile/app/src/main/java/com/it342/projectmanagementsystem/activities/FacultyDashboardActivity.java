@@ -10,6 +10,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -24,6 +25,7 @@ import com.it342.projectmanagementsystem.R;
 import com.it342.projectmanagementsystem.adapters.NotificationAdapter;
 import com.it342.projectmanagementsystem.models.Notification;
 import com.it342.projectmanagementsystem.utils.Constants;
+import com.it342.projectmanagementsystem.utils.LocalNotificationService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,6 +109,12 @@ public class FacultyDashboardActivity extends AppCompatActivity implements Notif
         btnLogout.setOnClickListener(v -> showLogoutConfirmationDialog());
         
         btnNotifications.setOnClickListener(v -> showNotificationsDialog());
+        
+        // Add long press listener for creating test notifications
+        btnNotifications.setOnLongClickListener(v -> {
+            createTestNotification();
+            return true;
+        });
     }
     
     private void fetchNotifications() {
@@ -232,5 +240,19 @@ public class FacultyDashboardActivity extends AppCompatActivity implements Notif
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
+    }
+    
+    /**
+     * Create a test notification for debugging purposes
+     */
+    private void createTestNotification() {
+        // Create a test notification
+        LocalNotificationService.createTestNotification(this);
+        
+        // Show toast message
+        Toast.makeText(this, "Test notification created", Toast.LENGTH_SHORT).show();
+        
+        // Refresh notifications list
+        fetchNotifications();
     }
 } 

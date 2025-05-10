@@ -12,11 +12,17 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.it342.projectmanagementsystem.PMSApplication;
 import com.it342.projectmanagementsystem.R;
 import com.it342.projectmanagementsystem.api.ApiService;
 import com.it342.projectmanagementsystem.api.RetrofitClient;
 import com.it342.projectmanagementsystem.models.AuthResponse;
 import com.it342.projectmanagementsystem.models.LoginRequest;
+import com.it342.projectmanagementsystem.utils.Constants;
+import com.it342.projectmanagementsystem.utils.FcmTokenDebugger;
+import com.it342.projectmanagementsystem.utils.NotificationUtils;
+
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -48,6 +54,9 @@ public class LoginFormActivity extends AppCompatActivity {
 
         // Set click listeners
         btnSignIn.setOnClickListener(v -> attemptLoginWithApi());
+        
+        // Request notification permission for Android 13+
+        PMSApplication.requestNotificationPermission(this);
         
         Log.d(TAG, "Activity created. Using Custom API for login.");
     }
@@ -97,6 +106,8 @@ public class LoginFormActivity extends AppCompatActivity {
                         Log.d(TAG, "Role: " + authResponse.getRole());
                         // Save auth token and user info
                         saveUserData(authResponse);
+                        // Get and send FCM token to server
+                        retrieveAndSendFCMToken();
                         // Navigate based on role
                         navigateToHomePage(authResponse.getRole());
                     } else {
@@ -132,17 +143,40 @@ public class LoginFormActivity extends AppCompatActivity {
     }
 
     private void saveUserData(AuthResponse authResponse) { 
-        SharedPreferences prefs = getSharedPreferences("AuthPrefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
-        editor.putString("token", authResponse.getToken());
-        editor.putString("userId", authResponse.getUserId()); 
-        editor.putString("studId", authResponse.getStudId()); // Assuming studId might be needed
-        editor.putString("email", authResponse.getEmail());
-        editor.putString("firstName", authResponse.getFirstName());
-        editor.putString("lastName", authResponse.getLastName());
-        editor.putString("role", authResponse.getRole());
+        editor.putString(Constants.KEY_TOKEN, authResponse.getToken());
+        editor.putString(Constants.KEY_USER_ID, authResponse.getUserId()); 
+        editor.putString(Constants.KEY_STUD_ID, authResponse.getStudId()); // Assuming studId might be needed
+        editor.putString(Constants.KEY_EMAIL, authResponse.getEmail());
+        editor.putString(Constants.KEY_FIRST_NAME, authResponse.getFirstName());
+        editor.putString(Constants.KEY_LAST_NAME, authResponse.getLastName());
+        editor.putString(Constants.KEY_ROLE, authResponse.getRole());
         editor.apply();
         Log.i(TAG, "User data saved successfully. Role: " + authResponse.getRole());
+    }
+    
+    private void retrieveAndSendFCMToken() {
+        FirebaseMessaging.getInstance().getToken()
+            .addOnCompleteListener(task -> {
+                if (!task.isSuccessful()) {
+                    Log.w(TAG, "Fetching FCM registration token failed", task.getException());
+                    return;
+                }
+
+                // Get new FCM registration token
+                String token = task.getResult();
+                Log.d(TAG, "FCM Token: " + token);
+                
+                // Save token locally
+                NotificationUtils.saveFCMToken(this, token);
+                
+                // Test FCM token update with various approaches
+                FcmTokenDebugger.testFcmTokenUpdate(this);
+                
+                // Send token to server using the normal method
+                NotificationUtils.sendFCMTokenToServer(this);
+            });
     }
 
     private void navigateToHomePage(String userRole) {

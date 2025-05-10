@@ -101,9 +101,22 @@ public interface ApiService {
         @Header("Authorization") String token
     );
     
-    @POST("/api/auth/fcm-token")
+    @POST("/api/users/fcm-token")
     Call<Map<String, String>> updateFcmToken(
         @Body Map<String, String> fcmTokenData,
+        @Header("Authorization") String token
+    );
+    
+    @POST("/api/appointments/{appointmentId}/notify")
+    Call<Map<String, Object>> sendNotification(
+        @Path("appointmentId") String appointmentId,
+        @Body Map<String, Object> notificationData,
+        @Header("Authorization") String token
+    );
+    
+    @POST("/api/appointments/{appointmentId}/remind")
+    Call<Map<String, Object>> sendAppointmentReminder(
+        @Path("appointmentId") String appointmentId,
         @Header("Authorization") String token
     );
 } 
